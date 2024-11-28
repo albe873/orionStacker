@@ -1,0 +1,11 @@
+
+addRGGB
+*.json
+*.fit
+/output
+*.tif
+openstacker
+*.hip
+openstacker_int16
+*.fits
+printfitsmetadata

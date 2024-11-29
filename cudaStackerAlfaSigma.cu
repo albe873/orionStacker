@@ -69,6 +69,35 @@ __global__ void computeMean(u_int32_t *acc_d, u_int16_t *mean, int numImages, in
     }
 }
 
+__global__ void computeMeanAdv(u_int16_t **image, u_int16_t *mean, int numImages, int npixels) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    u_int16_t immagini = 0;
+    u_int32_t acc = 0;
+    if (idx < npixels) {
+        for (int i = 0; i < numImages; i++) {
+            if (image[i][idx] > 0) {
+                immagini++;
+                acc += image[i][idx];
+            }
+        }
+        mean[idx] = acc / immagini;
+    }
+}
+
+__global__ void computeStdDev(float *std, u_int16_t *mean, u_int16_t **image, int numImages, int npixels) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    u_int16_t immagini = 0;
+    if (idx < npixels) {
+        for (int i = 0; i < numImages; i++) {
+            if (image[i][idx] > 0) {
+                immagini++;
+                std[idx] += pow(( (float) image[i][idx] - mean[idx]), 2);
+            }
+        }
+        std[idx] = sqrt(std[idx] / immagini);
+    }
+}
+
 // controllo risultato CPU
 void accumulatePixelsCPU(u_int32_t *acc, u_int16_t *image, int npixels) {
     for (int i = 0; i < npixels; i++) {
@@ -229,12 +258,8 @@ int main(int argc, char **argv) {
     // Scansione della cartella
 
     fitsfile *fptr = nullptr;
-    int width, height, depth, new_width, new_height, new_depth, image_count = 0, status, block_size = 256, grid_size;
+    int width, height, depth, new_width, new_height, new_depth, image_count = 0, image_num = 0, status, block_size = 256, grid_size;
     size_t npixels;
-    u_int16_t *fits_data = nullptr;
-    //u_int16_t *fits_data_CPU = nullptr;
-    u_int32_t *acc = nullptr;
-    //u_int32_t *acc_CPU = nullptr;
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
@@ -261,14 +286,40 @@ int main(int argc, char **argv) {
                         continue;
                     }
                 }
-                
+
                 fits_close_file(fptr, &status);
-                image_count++;
+                image_num++;
             }
         }
     }
+    closedir(dir);
+
+    u_int16_t *fits_data[10], *mean;
+    float *std;
+    //u_int16_t *fits_data_CPU = nullptr;
+    u_int32_t *acc = nullptr;
+    //u_int32_t *acc_CPU = nullptr;
+
+    // Allocazione memoria unificata
+    for (int i = 0; i < image_num; i++) {
+        CHECK(cudaMallocManaged(&fits_data[i], npixels * sizeof(u_int16_t)));
+    }
+
+    CHECK(cudaMallocManaged(&std, npixels * sizeof(float)));
+    CHECK(cudaMemAdvise(std, npixels * sizeof(float), cudaMemAdviseSetPreferredLocation, dev));
+    
+    CHECK(cudaMallocManaged(&acc, npixels * sizeof(u_int32_t)));
+    CHECK(cudaMemAdvise(acc, npixels * sizeof(u_int32_t), cudaMemAdviseSetPreferredLocation, dev));
+    CHECK(cudaMemset(acc, 0, npixels * sizeof(u_int32_t)));
+
+    CHECK(cudaMallocManaged(&mean, npixels * sizeof(u_int16_t)));
+    CHECK(cudaMemAdvise(mean, npixels * sizeof(u_int16_t), cudaMemAdviseSetPreferredLocation, dev));
 
 
+    if ((dir = opendir(argv[1])) == NULL) {
+        perror("opendir");
+        return 1;
+    }
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
             // Costruisce il percorso completo
@@ -280,55 +331,30 @@ int main(int argc, char **argv) {
                 printf("Processing file: %s\n", file_path);
                 open_fits(file_path, &fptr);
 
-                if (image_count == 0) {
-                    print_fits_metadata(fptr);
-                    get_image_dimensions(fptr, &width, &height, &depth);
-                    npixels = width * height * depth;
-                    grid_size = (npixels + block_size - 1) / block_size;
-
-                    // Allocate unified memory
-                    CHECK(cudaMallocManaged(&fits_data, npixels * sizeof(u_int16_t)));
-                    CHECK(cudaMallocManaged(&acc, npixels * sizeof(u_int32_t)));
-                    CHECK(cudaMemset(acc, 0, npixels * sizeof(u_int32_t)));
-                    
-                    //acc_CPU = (u_int32_t *) malloc(npixels * sizeof(u_int32_t));
-                    //memset(acc_CPU, 0, npixels * sizeof(u_int32_t));
-
-                    CHECK(cudaMemPrefetchAsync(fits_data, npixels * sizeof(u_int16_t), dev, NULL));
-                    CHECK(cudaMemAdvise(acc, npixels * sizeof(u_int32_t), cudaMemAdviseSetPreferredLocation, dev));
-
-                    get_fits_data(fptr, npixels, fits_data);
+                get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
+                if (new_width != width || new_height != height || new_depth != depth) {
+                    fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
                     fits_close_file(fptr, &status);
+                    continue;
                 }
-                else {
-                    get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
-                    if (new_width != width || new_height != height) {
-                        fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
-                        fits_close_file(fptr, &status);
-                        continue;
-                    }
 
-                    get_fits_data(fptr, npixels, fits_data);
-                    fits_close_file(fptr, &status);
-
-                    CHECK(cudaDeviceSynchronize()); // lazy cuda device synchronization
-                }
-                
-                accumulatePixels<<<grid_size, block_size>>>(acc, fits_data, npixels);
-                //accumulatePixelsCPU(acc_CPU, fits_data, npixels);
-
+                get_fits_data(fptr, npixels, fits_data[image_count]);
+                fits_close_file(fptr, &status);
                 image_count++;
+
             }
         }
     }
-
-
     closedir(dir);
 
-    // Calcola la media finale
-    CHECK(cudaDeviceSynchronize()); // lazy cuda device synchronization
-    computeMean<<<grid_size, block_size>>>(acc, fits_data, image_count, npixels);
+    // Calcola la media
+    //__global__ void computeMeadAdv(u_int16_t **image, u_int16_t *mean, int numImages, int npixels)
+    computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
     CHECK(cudaDeviceSynchronize());
+
+    // Calcola la deviazione standard
+    //computeStdDev<<<grid_size, block_size>>>(std, mean, fits_data, image_count, npixels);
+    //CHECK(cudaDeviceSynchronize());
 
     //fits_data_CPU = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
     //computeMeanCPU(acc_CPU, fits_data_CPU, image_count, npixels);
@@ -342,7 +368,7 @@ int main(int argc, char **argv) {
 
     //stbi_write_png("output/oputput_rgb.png", width, height, 3, rgb, width * 3);
 
-    save_image_fits("output/output.fits", fits_data, width, height, depth);
+    save_image_fits("output/output.fits", mean, width, height, depth);
 
     CHECK(cudaFree(fits_data));
     CHECK(cudaFree(acc));

@@ -271,7 +271,7 @@ int main(int argc, char **argv) {
             if (strstr(file_path, ".fits") != NULL || strstr(file_path, ".fit")) {
                 open_fits(file_path, &fptr);
 
-                if (image_count == 0) {
+                if (image_num == 0) {
                     print_fits_metadata(fptr);
                     get_image_dimensions(fptr, &width, &height, &depth);
                     npixels = width * height * depth;

@@ -294,13 +294,14 @@ int main(int argc, char **argv) {
     }
     closedir(dir);
 
-    u_int16_t *fits_data[10], *mean;
+    u_int16_t **fits_data = nullptr, *mean = nullptr;
     float *std;
     //u_int16_t *fits_data_CPU = nullptr;
     u_int32_t *acc = nullptr;
     //u_int32_t *acc_CPU = nullptr;
 
     // Allocazione memoria unificata
+    CHECK(cudaMallocManaged(&fits_data, image_num * sizeof(u_int16_t*)));
     for (int i = 0; i < image_num; i++) {
         CHECK(cudaMallocManaged(&fits_data[i], npixels * sizeof(u_int16_t)));
     }
@@ -353,8 +354,8 @@ int main(int argc, char **argv) {
     CHECK(cudaDeviceSynchronize());
 
     // Calcola la deviazione standard
-    //computeStdDev<<<grid_size, block_size>>>(std, mean, fits_data, image_count, npixels);
-    //CHECK(cudaDeviceSynchronize());
+    computeStdDev<<<grid_size, block_size>>>(std, mean, fits_data, image_count, npixels);
+    CHECK(cudaDeviceSynchronize());
 
     //fits_data_CPU = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
     //computeMeanCPU(acc_CPU, fits_data_CPU, image_count, npixels);

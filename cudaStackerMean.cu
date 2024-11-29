@@ -14,10 +14,10 @@
 /*  --- AMD HIPify tool & HCC compiler ---
 
 --  to generate hipified code, use the following command
-hipify-clang openstacker.cu --cuda-path=/opt/cuda
+hipify-clang cudaStackerMean.cu --cuda-path=/opt/cuda
 
 --  to compile the hipified code, use the following command
-hipcc openstacker.cu.hip  -o openstacker -lcfitsio -O3 -Wall
+hipcc cudaStackerMean.cu.hip  -o cudaStackerMean -lcfitsio -O3 -Wall
 */
 
 #define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
@@ -61,13 +61,33 @@ __global__ void accumulatePixels(u_int32_t *acc_d, u_int16_t *d_image, int npixe
     }
 }
 
-
 // calcolo media finale
 __global__ void computeMean(u_int32_t *acc_d, u_int16_t *mean, int numImages, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < npixels) {
         mean[idx] = acc_d[idx] / numImages;
     }
+}
+
+// controllo risultato CPU
+void accumulatePixelsCPU(u_int32_t *acc, u_int16_t *image, int npixels) {
+    for (int i = 0; i < npixels; i++) {
+        acc[i] += image[i];
+    }
+}
+void computeMeanCPU(u_int32_t *acc, u_int16_t *mean, int numImages, int npixels) {
+    for (int i = 0; i < npixels; i++) {
+        mean[i] = acc[i] / numImages;
+    }
+}
+void compareResults(u_int16_t *cpu_result, u_int16_t *gpu_result, int npixels) {
+    for (int i = 0; i < npixels; i++) {
+        if (cpu_result[i] != gpu_result[i]) {
+            printf("Mismatch at pixel %d: CPU = %u, GPU = %u\n", i, cpu_result[i], gpu_result[i]);
+            return;
+        }
+    }
+    printf("Results match!\n");
 }
 
 void open_fits(char *file_path, fitsfile **fptr) {
@@ -212,7 +232,9 @@ int main(int argc, char **argv) {
     int width, height, depth, new_width, new_height, new_depth, image_count = 0, status, block_size = 256, grid_size;
     size_t npixels;
     u_int16_t *fits_data = nullptr;
+    //u_int16_t *fits_data_CPU = nullptr;
     u_int32_t *acc = nullptr;
+    //u_int32_t *acc_CPU = nullptr;
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
@@ -235,6 +257,12 @@ int main(int argc, char **argv) {
                     CHECK(cudaMallocManaged(&fits_data, npixels * sizeof(u_int16_t)));
                     CHECK(cudaMallocManaged(&acc, npixels * sizeof(u_int32_t)));
                     CHECK(cudaMemset(acc, 0, npixels * sizeof(u_int32_t)));
+                    
+                    //acc_CPU = (u_int32_t *) malloc(npixels * sizeof(u_int32_t));
+                    //memset(acc_CPU, 0, npixels * sizeof(u_int32_t));
+
+                    CHECK(cudaMemPrefetchAsync(fits_data, npixels * sizeof(u_int16_t), dev, NULL));
+                    CHECK(cudaMemAdvise(acc, npixels * sizeof(u_int32_t), cudaMemAdviseSetPreferredLocation, dev));
 
                     get_fits_data(fptr, npixels, fits_data);
                     fits_close_file(fptr, &status);
@@ -254,6 +282,7 @@ int main(int argc, char **argv) {
                 }
                 
                 accumulatePixels<<<grid_size, block_size>>>(acc, fits_data, npixels);
+                //accumulatePixelsCPU(acc_CPU, fits_data, npixels);
 
                 image_count++;
             }
@@ -264,9 +293,13 @@ int main(int argc, char **argv) {
     // Calcola la media finale
     CHECK(cudaDeviceSynchronize()); // lazy cuda device synchronization
     computeMean<<<grid_size, block_size>>>(acc, fits_data, image_count, npixels);
-
-    // Copia il risultato finale sull'host
     CHECK(cudaDeviceSynchronize());
+
+    //fits_data_CPU = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
+    //computeMeanCPU(acc_CPU, fits_data_CPU, image_count, npixels);
+
+    // Confronta i risultati CPU e GPU
+    //compareResults(fits_data_CPU, fits_data, npixels);
 
     // Converte i dati FITS in RGB
     //uint8_t *rgb = (uint8_t *) malloc(npixels * 3 * sizeof(uint8_t));

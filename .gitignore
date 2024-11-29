@@ -9,3 +9,4 @@ openstacker
 openstacker_int16
 *.fits
 printfitsmetadata
+cudaStackerMean

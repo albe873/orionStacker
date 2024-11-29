@@ -211,8 +211,8 @@ int main(int argc, char **argv) {
     fitsfile *fptr = nullptr;
     int width, height, depth, new_width, new_height, new_depth, image_count = 0, status, block_size = 256, grid_size;
     size_t npixels;
-    u_int16_t *fits_data_h = nullptr, *fits_data_d = nullptr;
-    u_int32_t *acc_d = nullptr;
+    u_int16_t *fits_data = nullptr;
+    u_int32_t *acc = nullptr;
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
@@ -230,12 +230,13 @@ int main(int argc, char **argv) {
                     get_image_dimensions(fptr, &width, &height, &depth);
                     npixels = width * height * depth;
                     grid_size = (npixels + block_size - 1) / block_size;
-                    CHECK(cudaMalloc(&fits_data_d, npixels * sizeof(u_int16_t)));
-                    CHECK(cudaMalloc(&acc_d, npixels * sizeof(u_int32_t)));
-                    CHECK(cudaMemset(acc_d, 0, npixels * sizeof(u_int32_t)));
 
-                    fits_data_h = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
-                    get_fits_data(fptr, npixels, fits_data_h);
+                    // Allocate unified memory
+                    CHECK(cudaMallocManaged(&fits_data, npixels * sizeof(u_int16_t)));
+                    CHECK(cudaMallocManaged(&acc, npixels * sizeof(u_int32_t)));
+                    CHECK(cudaMemset(acc, 0, npixels * sizeof(u_int32_t)));
+
+                    get_fits_data(fptr, npixels, fits_data);
                     fits_close_file(fptr, &status);
                 }
                 else {
@@ -246,14 +247,13 @@ int main(int argc, char **argv) {
                         continue;
                     }
 
-                    get_fits_data(fptr, npixels, fits_data_h);
+                    get_fits_data(fptr, npixels, fits_data);
                     fits_close_file(fptr, &status);
 
                     CHECK(cudaDeviceSynchronize()); // lazy cuda device synchronization
                 }
                 
-                CHECK(cudaMemcpy(fits_data_d, fits_data_h, npixels * sizeof(u_int16_t), cudaMemcpyHostToDevice));
-                accumulatePixels<<<grid_size, block_size>>>(acc_d, fits_data_d, npixels);
+                accumulatePixels<<<grid_size, block_size>>>(acc, fits_data, npixels);
 
                 image_count++;
             }
@@ -263,11 +263,10 @@ int main(int argc, char **argv) {
 
     // Calcola la media finale
     CHECK(cudaDeviceSynchronize()); // lazy cuda device synchronization
-    computeMean<<<grid_size, block_size>>>(acc_d, fits_data_d, image_count, npixels);
+    computeMean<<<grid_size, block_size>>>(acc, fits_data, image_count, npixels);
 
     // Copia il risultato finale sull'host
     CHECK(cudaDeviceSynchronize());
-    CHECK(cudaMemcpy(fits_data_h, fits_data_d, npixels * sizeof(u_int16_t), cudaMemcpyDeviceToHost));
 
     // Converte i dati FITS in RGB
     //uint8_t *rgb = (uint8_t *) malloc(npixels * 3 * sizeof(uint8_t));
@@ -275,10 +274,10 @@ int main(int argc, char **argv) {
 
     //stbi_write_png("output/oputput_rgb.png", width, height, 3, rgb, width * 3);
 
-    save_image_fits("output/output.fits", fits_data_h, width, height, depth);
+    save_image_fits("output/output.fits", fits_data, width, height, depth);
 
-
-
+    CHECK(cudaFree(fits_data));
+    CHECK(cudaFree(acc));
     CHECK(cudaDeviceReset());
     exit(0);
 }

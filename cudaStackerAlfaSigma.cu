@@ -3,6 +3,7 @@
 #include <fitsio.h>
 #include <dirent.h>
 #include <string.h>
+#include <ctime>
 
 // Include STB image libraries
 #define STB_IMAGE_IMPLEMENTATION
@@ -98,6 +99,17 @@ __global__ void computeStdDev(float *std, u_int16_t *mean, u_int16_t **image, in
     }
 }
 
+__global__ void filterPixels(u_int16_t *mean, float *std, u_int16_t **image, int k, int numImages, int npixels) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < npixels) {
+        for (int i = 0; i < numImages; i++) {
+            if (image[i][idx] > mean[idx] + k * std[idx] || image[i][idx] < mean[idx] - k * std[idx]) {
+                image[i][idx] = 0;
+            }
+        }
+    }
+}
+
 // controllo risultato CPU
 void accumulatePixelsCPU(u_int32_t *acc, u_int16_t *image, int npixels) {
     for (int i = 0; i < npixels; i++) {
@@ -178,9 +190,21 @@ void print_fits_metadata(fitsfile *fptr) {
     }
 }
 
-void save_image_fits(char const *output_path, u_int16_t *image_data, int width, int height, int depth) {
+void save_image_fits(char const *output_dir_path, u_int16_t *image_data, int width, int height, int depth) {
     fitsfile *fptr;
     int status = 0;
+
+    char output_path[1024];
+    strcpy(output_path, output_dir_path);
+
+    //aggiungo data, ora ed estensione al nome del file
+    char timestamp_str[23];
+    time_t rawtime;
+    struct tm *timeinfo;
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    strftime(timestamp_str, sizeof(timestamp_str), "_%Y%m%d_%H%M%S.fits", timeinfo);
+    strcat(output_path, timestamp_str);
 
     if (fits_create_file(&fptr, output_path, &status)) {
         if (status == FILE_NOT_CREATED) {
@@ -350,11 +374,16 @@ int main(int argc, char **argv) {
 
     // Calcola la media
     //__global__ void computeMeadAdv(u_int16_t **image, u_int16_t *mean, int numImages, int npixels)
-    computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
-    CHECK(cudaDeviceSynchronize());
+    for (int i = 0; i < 5; i++) {
+        computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
+        CHECK(cudaDeviceSynchronize());
+        computeStdDev<<<grid_size, block_size>>>(std, mean, fits_data, image_count, npixels);
+        CHECK(cudaDeviceSynchronize());
+        filterPixels<<<grid_size, block_size>>>(mean, std, fits_data, 3, image_count, npixels);
+        CHECK(cudaDeviceSynchronize());
+    }
 
-    // Calcola la deviazione standard
-    computeStdDev<<<grid_size, block_size>>>(std, mean, fits_data, image_count, npixels);
+    computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
     CHECK(cudaDeviceSynchronize());
 
     //fits_data_CPU = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
@@ -369,7 +398,9 @@ int main(int argc, char **argv) {
 
     //stbi_write_png("output/oputput_rgb.png", width, height, 3, rgb, width * 3);
 
-    save_image_fits("output/output.fits", mean, width, height, depth);
+    //save_image_fits("output/output.fits", mean, width, height, depth);
+    // Get current time
+    save_image_fits("output/image", mean, width, height, depth);
 
     CHECK(cudaFree(fits_data));
     CHECK(cudaFree(acc));

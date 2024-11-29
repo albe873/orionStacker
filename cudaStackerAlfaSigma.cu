@@ -14,10 +14,10 @@
 /*  --- AMD HIPify tool & HCC compiler ---
 
 --  to generate hipified code, use the following command
-hipify-clang cudaStackerMean.cu --cuda-path=/opt/cuda
+hipify-clang cudaStackerAlfaSigma.cu --cuda-path=/opt/cuda
 
 --  to compile the hipified code, use the following command
-hipcc cudaStackerMean.cu.hip  -o cudaStackerMean -lcfitsio -O3 -Wall
+hipcc cudaStackerAlfaSigma.cu.hip  -o cudaStackerAlfaSigma -lcfitsio -O3 -Wall
 */
 
 #define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
@@ -244,6 +244,39 @@ int main(int argc, char **argv) {
 
             // Processa solo i file .fits
             if (strstr(file_path, ".fits") != NULL || strstr(file_path, ".fit")) {
+                open_fits(file_path, &fptr);
+
+                if (image_count == 0) {
+                    print_fits_metadata(fptr);
+                    get_image_dimensions(fptr, &width, &height, &depth);
+                    npixels = width * height * depth;
+                    grid_size = (npixels + block_size - 1) / block_size;
+
+                }
+                else {
+                    get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
+                    if (new_width != width || new_height != height || new_depth != depth) {
+                        fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
+                        fits_close_file(fptr, &status);
+                        continue;
+                    }
+                }
+                
+                fits_close_file(fptr, &status);
+                image_count++;
+            }
+        }
+    }
+
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
+            // Costruisce il percorso completo
+            char file_path[1024];
+            snprintf(file_path, sizeof(file_path), "%s/%s", argv[1], entry->d_name);
+
+            // Processa solo i file .fits
+            if (strstr(file_path, ".fits") != NULL || strstr(file_path, ".fit")) {
                 printf("Processing file: %s\n", file_path);
                 open_fits(file_path, &fptr);
 
@@ -265,27 +298,31 @@ int main(int argc, char **argv) {
                     CHECK(cudaMemAdvise(acc, npixels * sizeof(u_int32_t), cudaMemAdviseSetPreferredLocation, dev));
 
                     get_fits_data(fptr, npixels, fits_data);
+                    fits_close_file(fptr, &status);
                 }
                 else {
                     get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
-                    if (new_width != width || new_height != height || new_depth != depth) {
+                    if (new_width != width || new_height != height) {
                         fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
                         fits_close_file(fptr, &status);
                         continue;
                     }
 
                     get_fits_data(fptr, npixels, fits_data);
+                    fits_close_file(fptr, &status);
 
                     CHECK(cudaDeviceSynchronize()); // lazy cuda device synchronization
                 }
                 
                 accumulatePixels<<<grid_size, block_size>>>(acc, fits_data, npixels);
                 //accumulatePixelsCPU(acc_CPU, fits_data, npixels);
-                fits_close_file(fptr, &status);
+
                 image_count++;
             }
         }
     }
+
+
     closedir(dir);
 
     // Calcola la media finale

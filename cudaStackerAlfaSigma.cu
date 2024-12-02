@@ -35,30 +35,6 @@ inline void cuda_check(cudaError_t error_code, const char *file, int line) {
     }
 }
 
-// Funzione host per la conversione RGB->Gray
-void rgbToGrayCPU(unsigned char *rgb, unsigned char *gray, int width, int height) {
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            int rgbOffset = (y * width + x) * 3;
-            int grayOffset = y * width + x;
-            unsigned char r = rgb[rgbOffset];
-            unsigned char g = rgb[rgbOffset + 1];
-            unsigned char b = rgb[rgbOffset + 2];
-            gray[grayOffset] = (unsigned char)(0.299f * r + 0.587f * g + 0.114f * b);
-        }
-    }
-}
-
-__global__ void rgbToGrayGPU(unsigned char *d_rgb, unsigned char *d_gray, int width, int height) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x < width && y < height) {
-        int idx = (y * width + x) * 3;
-        int grayIdx = y * width + x;
-        d_gray[grayIdx] = (unsigned char)(0.299f * d_rgb[idx] + 0.587f * d_rgb[idx+1] + 0.114f * d_rgb[idx+2]);
-    }
-}
-
 // accumulo dei valori di ogni pixel delle immagini con SATURAZIONE
 __global__ void accumulatePixels(u_int32_t *acc_d, u_int16_t *d_image, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -75,6 +51,7 @@ __global__ void computeMean(u_int32_t *acc_d, u_int16_t *mean, int numImages, in
     }
 }
 
+// calcolo media di tutte le immagini escludendo i pixel con valore 0
 __global__ void computeMeanAdv(u_int16_t **image, u_int16_t *mean, int numImages, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     u_int16_t immagini = 0;
@@ -90,6 +67,7 @@ __global__ void computeMeanAdv(u_int16_t **image, u_int16_t *mean, int numImages
     }
 }
 
+// calcolo deviazione standard
 __global__ void computeStdDev(float *std, u_int16_t *mean, u_int16_t **image, int numImages, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     u_int16_t immagini = 0;
@@ -104,6 +82,7 @@ __global__ void computeStdDev(float *std, u_int16_t *mean, u_int16_t **image, in
     }
 }
 
+// filtro i pixel con valore fuori dal range, mettendoli a 0
 __global__ void filterPixels(u_int16_t *mean, float *std, u_int16_t **image, int k, int numImages, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < npixels) {
@@ -115,7 +94,7 @@ __global__ void filterPixels(u_int16_t *mean, float *std, u_int16_t **image, int
     }
 }
 
-// controllo risultato CPU
+// controllo risultato CPU-GPU media standard
 void accumulatePixelsCPU(u_int32_t *acc, u_int16_t *image, int npixels) {
     for (int i = 0; i < npixels; i++) {
         acc[i] += image[i];
@@ -136,6 +115,9 @@ void compareResults(u_int16_t *cpu_result, u_int16_t *gpu_result, int npixels) {
     printf("Results match!\n");
 }
 
+
+
+// funzioni per file FITS
 void open_fits(char *file_path, fitsfile **fptr) {
     int status = 0;
     if (fits_open_file(fptr, file_path, READONLY, &status)) {
@@ -258,14 +240,6 @@ void save_image_fits(char const *output_dir_path, u_int16_t *image_data, int wid
     fits_close_file(fptr, &status);
 }
 
-void convert_to_rgb(float *fits_data, size_t npixels, uint8_t *rgb) {
-    for (size_t i = 0; i < npixels; i++) {
-        uint8_t value = (uint8_t)(fits_data[i] / (65535.0 / 255.0));
-        rgb[i * 3] = value;
-        rgb[i * 3 + 1] = value;
-        rgb[i * 3 + 2] = value;
-    }
-}
 
 int main(int argc, char **argv) {
     if (argc != 2) {
@@ -379,8 +353,7 @@ int main(int argc, char **argv) {
     }
     closedir(dir);
 
-    // Calcola la media
-    //__global__ void computeMeadAdv(u_int16_t **image, u_int16_t *mean, int numImages, int npixels)
+    // Calcola la media con algoritmo Alfa Sigma
     for (int i = 0; i < 5; i++) {
         computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
         CHECK(cudaDeviceSynchronize());
@@ -393,20 +366,6 @@ int main(int argc, char **argv) {
     computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
     CHECK(cudaDeviceSynchronize());
 
-    //fits_data_CPU = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
-    //computeMeanCPU(acc_CPU, fits_data_CPU, image_count, npixels);
-
-    // Confronta i risultati CPU e GPU
-    //compareResults(fits_data_CPU, fits_data, npixels);
-
-    // Converte i dati FITS in RGB
-    //uint8_t *rgb = (uint8_t *) malloc(npixels * 3 * sizeof(uint8_t));
-    //convert_to_rgb(fits_data_h, npixels, rgb);
-
-    //stbi_write_png("output/oputput_rgb.png", width, height, 3, rgb, width * 3);
-
-    //save_image_fits("output/output.fits", mean, width, height, depth);
-    // Get current time
     save_image_fits("output/image", mean, width, height, depth);
 
     CHECK(cudaFree(fits_data));

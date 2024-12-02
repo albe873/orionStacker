@@ -35,6 +35,12 @@ inline void cuda_check(cudaError_t error_code, const char *file, int line) {
     }
 }
 
+double cpuSecond() {
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    return ((double)ts.tv_sec + (double)ts.tv_nsec * 1.e-9);
+}
+
 // accumulo dei valori di ogni pixel delle immagini con SATURAZIONE
 __global__ void accumulatePixels(u_int32_t *acc_d, u_int16_t *d_image, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -63,7 +69,10 @@ __global__ void computeMeanAdv(u_int16_t **image, u_int16_t *mean, int numImages
                 acc += image[i][idx];
             }
         }
-        mean[idx] = acc / immagini;
+        if (immagini > 0)
+            mean[idx] = acc / immagini;
+        else
+            mean[idx] = 0;
     }
 }
 
@@ -75,7 +84,7 @@ __global__ void computeStdDev(float *std, u_int16_t *mean, u_int16_t **image, in
         for (int i = 0; i < numImages; i++) {
             if (image[i][idx] > 0) {
                 immagini++;
-                std[idx] += pow(( (float) image[i][idx] - mean[idx]), 2);
+                std[idx] += ((float) image[i][idx] - mean[idx]) * (image[i][idx] - mean[idx]);
             }
         }
         if (immagini > 0)
@@ -113,7 +122,10 @@ void computeMeanAdvCPU(u_int16_t **image, u_int16_t *mean, int numImages, int np
                 acc += image[j][i];
             }
         }
-        mean[i] = acc / immagini;
+        if (immagini > 0)
+            mean[i] = acc / immagini;
+        else
+            mean[i] = 0;
     }
 }
 void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numImages, int npixels) {
@@ -124,12 +136,13 @@ void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numIma
         for (int j = 0; j < numImages; j++) {
             if (image[j][i] > 0) {
                 immagini++;
-                std[i] += pow(( (float) image[j][i] - mean[i]), 2);
+                std[i] += ((float) image[j][i] - mean[i]) * (image[j][i] - mean[i]);
             }
         }
-        if (immagini > 0) {
+        if (immagini > 0)
             std[i] = sqrt(std[i] / immagini);
-        }
+        else
+            std[i] = 0.0f;
     }
 }
 void filterPixelsCPU(u_int16_t *mean, float *std, u_int16_t **image, int k, int numImages, int npixels) {
@@ -141,16 +154,6 @@ void filterPixelsCPU(u_int16_t *mean, float *std, u_int16_t **image, int k, int 
         }
     }
 }
-void compareResults(u_int16_t *cpu_result, u_int16_t *gpu_result, int npixels) {
-    for (int i = 0; i < npixels; i++) {
-        if (cpu_result[i] != gpu_result[i]) {
-            printf("Mismatch at pixel %d: CPU = %u, GPU = %u\n", i, cpu_result[i], gpu_result[i]);
-            return;
-        }
-    }
-    printf("Results match!\n");
-}
-
 
 
 // funzioni per file FITS
@@ -271,8 +274,8 @@ void save_image_fits(char const *output_dir_path, u_int16_t *image_data, int wid
         exit(1);
     }
 
-    printf("Image saved to %s, metadata:\n", output_path);
-    print_fits_metadata(fptr);
+    printf("Image saved to %s\n", output_path);
+    //print_fits_metadata(fptr);
     fits_close_file(fptr, &status);
 }
 
@@ -371,7 +374,7 @@ int main(int argc, char **argv) {
 
             // Processa solo i file .fits
             if (strstr(file_path, ".fits") != NULL || strstr(file_path, ".fit")) {
-                printf("Processing file: %s\n", file_path);
+                printf("Opening file: %s\n", file_path);
                 open_fits(file_path, &fptr);
 
                 get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
@@ -390,35 +393,55 @@ int main(int argc, char **argv) {
     }
     closedir(dir);
 
+    double t_start, t_elapsed;
+
     // Calcola la media con algoritmo Alfa Sigma
-    
+    printf("Computing mean with Alfa Sigma with GPU ...\n");
+    t_start = cpuSecond();
     for (int i = 0; i < 5; i++) {
         computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
         CHECK(cudaDeviceSynchronize());
+
         computeStdDev<<<grid_size, block_size>>>(std, mean, fits_data, image_count, npixels);
         CHECK(cudaDeviceSynchronize());
+        
         filterPixels<<<grid_size, block_size>>>(mean, std, fits_data, 3, image_count, npixels);
         CHECK(cudaDeviceSynchronize());
     }
 
     computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
     CHECK(cudaDeviceSynchronize());
-    
-
-    // Calcola la media con algoritmo Alfa Sigma sulla CPU
-    u_int16_t *meanCPU = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
-    for (int i = 0; i < 5; i++) {
-        computeMeanAdvCPU(fits_data, meanCPU, image_count, npixels);
-        computeStdDevCPU(std, meanCPU, fits_data, image_count, npixels);
-        filterPixelsCPU(meanCPU, std, fits_data, 3, image_count, npixels);
-    }
-    computeMeanAdvCPU(fits_data, meanCPU, image_count, npixels);
-    compareResults(mean, meanCPU, npixels);
-
+    t_elapsed = cpuSecond() - t_start;
+    printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
     save_image_fits("output/image", mean, width, height, depth);
 
+    // Calcola la media con algoritmo Alfa Sigma sulla CPU
+    /*
+    u_int16_t *meanCPU = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
+    float *stdCPU = (float *) malloc(npixels * sizeof(float));
+    t_start = cpuSecond();
+    for (int i = 0; i < 5; i++) {
+        computeMeanAdvCPU(fits_data, meanCPU, image_count, npixels);
+        computeStdDevCPU(stdCPU, meanCPU, fits_data, image_count, npixels);
+        filterPixelsCPU(meanCPU, stdCPU, fits_data, 3, image_count, npixels);
+    }
+    computeMeanAdvCPU(fits_data, meanCPU, image_count, npixels);
+    t_elapsed = cpuSecond() - t_start;
+    printf("CPU Alfa Sigma elapsed time: %f\n", t_elapsed);
+    save_image_fits("output/image", meanCPU, width, height, depth);
+    free(meanCPU);
+    free(stdCPU);
+    */
+
+    // Calcola la media con accumulo dei pixel
+    for (int i = 0; i < image_num; i++) {
+        CHECK(cudaFree(fits_data[i]));
+    }
     CHECK(cudaFree(fits_data));
+    CHECK(cudaFree(mean));
     CHECK(cudaFree(acc));
+    CHECK(cudaFree(std));
+
     CHECK(cudaDeviceReset());
     exit(0);
 }

@@ -49,14 +49,6 @@ __global__ void accumulatePixels(u_int32_t *acc_d, u_int16_t *d_image, int npixe
     }
 }
 
-// calcolo media finale
-__global__ void computeMean(u_int32_t *acc_d, u_int16_t *mean, int numImages, int npixels) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < npixels) {
-        mean[idx] = acc_d[idx] / numImages;
-    }
-}
-
 // calcolo media di tutte le immagini escludendo i pixel con valore 0
 __global__ void computeMeanAdv(u_int16_t **image, u_int16_t *mean, int numImages, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -81,6 +73,7 @@ __global__ void computeStdDev(float *std, u_int16_t *mean, u_int16_t **image, in
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     u_int16_t immagini = 0;
     if (idx < npixels) {
+        std[idx] = 0.0f;
         for (int i = 0; i < numImages; i++) {
             if (image[i][idx] > 0) {
                 immagini++;
@@ -396,6 +389,7 @@ int main(int argc, char **argv) {
     double t_start, t_elapsed;
 
     // Calcola la media con algoritmo Alfa Sigma
+    ///*
     printf("Computing mean with Alfa Sigma with GPU ...\n");
     t_start = cpuSecond();
     for (int i = 0; i < 5; i++) {
@@ -414,6 +408,7 @@ int main(int argc, char **argv) {
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
     save_image_fits("output/image", mean, width, height, depth);
+    //*/
 
     // Calcola la media con algoritmo Alfa Sigma sulla CPU
     /*
@@ -431,7 +426,7 @@ int main(int argc, char **argv) {
     save_image_fits("output/image", meanCPU, width, height, depth);
     free(meanCPU);
     free(stdCPU);
-    */
+    //*/
 
     // Calcola la media con accumulo dei pixel
     for (int i = 0; i < image_num; i++) {

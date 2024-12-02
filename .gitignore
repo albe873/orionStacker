@@ -11,3 +11,4 @@ openstacker_int16
 printfitsmetadata
 cudaStackerMean
 cudaStackerAlfaSigma
+verify_result

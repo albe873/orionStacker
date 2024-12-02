@@ -132,6 +132,15 @@ void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numIma
         }
     }
 }
+void filterPixelsCPU(u_int16_t *mean, float *std, u_int16_t **image, int k, int numImages, int npixels) {
+    for (int i = 0; i < npixels; i++) {
+        for (int j = 0; j < numImages; j++) {
+            if (image[j][i] > mean[i] + k * std[i] || image[j][i] < mean[i] - k * std[i]) {
+                image[j][i] = 0;
+            }
+        }
+    }
+}
 void compareResults(u_int16_t *cpu_result, u_int16_t *gpu_result, int npixels) {
     for (int i = 0; i < npixels; i++) {
         if (cpu_result[i] != gpu_result[i]) {
@@ -382,6 +391,7 @@ int main(int argc, char **argv) {
     closedir(dir);
 
     // Calcola la media con algoritmo Alfa Sigma
+    
     for (int i = 0; i < 5; i++) {
         computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
         CHECK(cudaDeviceSynchronize());
@@ -393,6 +403,17 @@ int main(int argc, char **argv) {
 
     computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
     CHECK(cudaDeviceSynchronize());
+    
+
+    // Calcola la media con algoritmo Alfa Sigma sulla CPU
+    u_int16_t *meanCPU = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
+    for (int i = 0; i < 5; i++) {
+        computeMeanAdvCPU(fits_data, meanCPU, image_count, npixels);
+        computeStdDevCPU(std, meanCPU, fits_data, image_count, npixels);
+        filterPixelsCPU(meanCPU, std, fits_data, 3, image_count, npixels);
+    }
+    computeMeanAdvCPU(fits_data, meanCPU, image_count, npixels);
+    compareResults(mean, meanCPU, npixels);
 
     save_image_fits("output/image", mean, width, height, depth);
 

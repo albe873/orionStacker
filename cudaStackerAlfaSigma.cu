@@ -309,6 +309,7 @@ int main(int argc, char **argv) {
     CHECK(cudaMallocManaged(&fits_data, image_num * sizeof(u_int16_t*)));
     for (int i = 0; i < image_num; i++) {
         CHECK(cudaMallocManaged(&fits_data[i], npixels * sizeof(u_int16_t)));
+        CHECK(cudaMemPrefetchAsync(fits_data[i], npixels * sizeof(u_int16_t), dev));
     }
 
     CHECK(cudaMallocManaged(&std, npixels * sizeof(float)));

@@ -78,7 +78,10 @@ __global__ void computeStdDev(float *std, u_int16_t *mean, u_int16_t **image, in
                 std[idx] += pow(( (float) image[i][idx] - mean[idx]), 2);
             }
         }
-        std[idx] = sqrt(std[idx] / immagini);
+        if (immagini > 0)
+            std[idx] = sqrt(std[idx] / immagini);
+        else 
+            std[idx] = 0.0f;
     }
 }
 
@@ -100,9 +103,33 @@ void accumulatePixelsCPU(u_int32_t *acc, u_int16_t *image, int npixels) {
         acc[i] += image[i];
     }
 }
-void computeMeanCPU(u_int32_t *acc, u_int16_t *mean, int numImages, int npixels) {
+void computeMeanAdvCPU(u_int16_t **image, u_int16_t *mean, int numImages, int npixels) {
     for (int i = 0; i < npixels; i++) {
-        mean[i] = acc[i] / numImages;
+        u_int16_t immagini = 0;
+        u_int32_t acc = 0;
+        for (int j = 0; j < numImages; j++) {
+            if (image[j][i] > 0) {
+                immagini++;
+                acc += image[j][i];
+            }
+        }
+        mean[i] = acc / immagini;
+    }
+}
+void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numImages, int npixels) {
+    u_int16_t immagini;
+    for (int i = 0; i < npixels; i++) {
+        immagini = 0;
+        std[i] = 0.0f;
+        for (int j = 0; j < numImages; j++) {
+            if (image[j][i] > 0) {
+                immagini++;
+                std[i] += pow(( (float) image[j][i] - mean[i]), 2);
+            }
+        }
+        if (immagini > 0) {
+            std[i] = sqrt(std[i] / immagini);
+        }
     }
 }
 void compareResults(u_int16_t *cpu_result, u_int16_t *gpu_result, int npixels) {

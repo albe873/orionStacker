@@ -21,6 +21,11 @@ hipify-clang cudaStackerAlfaSigma.cu --cuda-path=/opt/cuda
 hipcc cudaStackerAlfaSigma.cu.hip  -o cudaStackerAlfaSigma -lcfitsio -O3 -Wall
 */
 
+/*
+--  to compile for cuda, use the following command
+nvcc cudaStackerAlfaSigma.cu -o ucdaStackerAlfaSigma -lcfitsio -O3
+*/
+
 #define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
 inline void cuda_check(cudaError_t error_code, const char *file, int line) {
     if (error_code != cudaSuccess) {
@@ -229,12 +234,14 @@ void save_image_fits(char const *output_dir_path, u_int16_t *image_data, int wid
     }
 
     if (depth == 1) {
-        if (fits_create_img(fptr, USHORT_IMG, 2, (long[]){width, height}, &status)) {
+        long naxes[2] = {width, height};
+        if (fits_create_img(fptr, USHORT_IMG, 2, naxes, &status)) {
             fits_report_error(stderr, status);
             exit(1);
         }
     } else {
-        if (fits_create_img(fptr, USHORT_IMG, 3, (long[]){width, height, depth}, &status)) {
+        long naxes[3] = {width, height, depth};
+        if (fits_create_img(fptr, USHORT_IMG, 3, naxes, &status)) {
             fits_report_error(stderr, status);
             exit(1);
         }

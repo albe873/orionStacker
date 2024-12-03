@@ -125,7 +125,7 @@ void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numIma
     u_int16_t immagini;
     for (int i = 0; i < npixels; i++) {
         immagini = 0;
-        std[i] = 0.0f;
+        //std[i] = 0.0f;    // inizializzato a 0.0f, più veloce impostare tutto a zero con cudaMemset
         for (int j = 0; j < numImages; j++) {
             if (image[j][i] > 0) {
                 immagini++;
@@ -134,8 +134,6 @@ void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numIma
         }
         if (immagini > 0)
             std[i] = sqrt(std[i] / immagini);
-        else
-            std[i] = 0.0f;
     }
 }
 void filterPixelsCPU(u_int16_t *mean, float *std, u_int16_t **image, int k, int numImages, int npixels) {
@@ -396,6 +394,7 @@ int main(int argc, char **argv) {
         computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
         CHECK(cudaDeviceSynchronize());
 
+        CHECK(cudaMemset(std, 0, npixels * sizeof(float)));
         computeStdDev<<<grid_size, block_size>>>(std, mean, fits_data, image_count, npixels);
         CHECK(cudaDeviceSynchronize());
         

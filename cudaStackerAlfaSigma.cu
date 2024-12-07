@@ -112,10 +112,6 @@ int main(int argc, char **argv) {
 
     CHECK(cudaMallocManaged(&std, npixels * sizeof(float)));
     CHECK(cudaMemAdvise(std, npixels * sizeof(float), cudaMemAdviseSetPreferredLocation, dev));
-    
-    //CHECK(cudaMallocManaged(&acc, npixels * sizeof(u_int32_t)));
-    //CHECK(cudaMemAdvise(acc, npixels * sizeof(u_int32_t), cudaMemAdviseSetPreferredLocation, dev));
-    //CHECK(cudaMemset(acc, 0, npixels * sizeof(u_int32_t)));
 
     CHECK(cudaMallocManaged(&mean, npixels * sizeof(u_int16_t)));
     CHECK(cudaMemAdvise(mean, npixels * sizeof(u_int16_t), cudaMemAdviseSetPreferredLocation, dev));

@@ -13,13 +13,9 @@ __global__ void computeMeanAdv(u_int16_t **image, u_int16_t *mean, int numImages
                 acc += image[i][idx];
             }
         }
-        if (immagini > 0)
-            mean[idx] = acc / immagini;
-        else
-            mean[idx] = 0;
+        mean[idx] = (immagini > 0) ? acc / immagini : 0;
     }
 }
-
 __device__ inline void computeMeanInline(u_int16_t **image, u_int16_t *mean, int idx, int numImages, int npixels) {
     u_int16_t immagini = 0;
     u_int32_t acc = 0;
@@ -31,6 +27,7 @@ __device__ inline void computeMeanInline(u_int16_t **image, u_int16_t *mean, int
     }
     mean[idx] = (immagini > 0) ? acc / immagini : 0;
 }
+
 
 // calcolo deviazione standard
 __global__ void computeStdDev(float *std, u_int16_t *mean, u_int16_t **image, int numImages, int npixels) {
@@ -47,7 +44,6 @@ __global__ void computeStdDev(float *std, u_int16_t *mean, u_int16_t **image, in
         std[idx] = immagini > 0 ? sqrt(std[idx] / immagini) : 0.0f;
     }
 }
-
 __device__ inline void computeStdDevInline(float *std, u_int16_t *mean, u_int16_t **image, int idx, int numImages, int npixels) {
     u_int16_t immagini = 0;
     std[idx] = 0.0f;
@@ -60,6 +56,7 @@ __device__ inline void computeStdDevInline(float *std, u_int16_t *mean, u_int16_
     std[idx] = immagini > 0 ? sqrt(std[idx] / immagini) : 0.0f;
 }
 
+
 // filtro i pixel con valore fuori dal range, mettendoli a 0
 __global__ void filterPixels(u_int16_t *mean, float *std, u_int16_t **image, int k, int numImages, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -71,7 +68,6 @@ __global__ void filterPixels(u_int16_t *mean, float *std, u_int16_t **image, int
         }
     }
 }
-
 __device__ inline void filterPixelsInline(u_int16_t *mean, float *std, u_int16_t **image, int idx, int k, int numImages, int npixels) {
     for (int i = 0; i < numImages; i++) {
         if (image[i][idx] > mean[idx] + k * std[idx] || image[i][idx] < mean[idx] - k * std[idx]) {

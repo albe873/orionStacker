@@ -1,13 +1,6 @@
 #ifndef CUDA_DEVICE_ALFA_SIGMA_H
 #define CUDA_DEVICE_ALFA_SIGMA_H
 
-#include "cuda_runtime.h"
-#include <stdio.h>
-#include <fitsio.h>
-#include <dirent.h>
-#include <string.h>
-#include <ctime>
-
 // accumulo dei valori di ogni pixel delle immagini con SATURAZIONE
 __global__ void accumulatePixels(u_int32_t *acc_d, u_int16_t *d_image, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;

@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
     CHECK(cudaSetDevice(0)); // Seleziona il dispositivo CUDA
 
     // Apertura della cartella
-
+    remove_trailing_slash((char *)in_dir);
     DIR *dir;
     struct dirent *entry;
     if ((dir = opendir(in_dir)) == NULL) {

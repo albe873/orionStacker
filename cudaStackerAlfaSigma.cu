@@ -8,6 +8,8 @@
 #include <dirent.h>
 #include <string.h>
 #include <ctime>
+#include <getopt.h>
+#include <cstdio>
 
 
 /*  --- AMD HIPify tool & HCC compiler ---
@@ -40,20 +42,52 @@ double cpuSecond() {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
-        printf("Usage: %s <directory_path>\n", argv[0]);
+
+    // Parsing degli argomenti
+
+    const char *in_dir = nullptr;
+    const char *out_dir = nullptr;
+
+    int opt, option_index = 0;
+
+    static struct option long_options[] = {
+        {"input-directory", required_argument, 0, 'i'},
+        {"output-directory", required_argument, 0, 'o'},
+        {0, 0, 0, 0}
+    };
+
+    while ((opt = getopt_long(argc, argv, "i:o:", long_options, &option_index)) != -1) {
+        switch (opt) {
+            case 'i':
+                in_dir = optarg;
+                break;
+            case 'o':
+                out_dir = optarg;
+                break;
+            default:
+                fprintf(stderr, "Usage: %s --input-directory <input/dir> --output-directory </output/dir>\n", argv[0]);
+                return 1;
+        }
+    }
+
+    if (in_dir == nullptr || out_dir == nullptr) {
+        fprintf(stderr, "Usage: %s --input-directory </input/dir> --output-directory </output/dir>\n", argv[0]);
         return 1;
     }
 
+
     // Imposta il device CUDA
+
     int dev = 0;
     cudaDeviceProp deviceProp;
     CHECK(cudaGetDeviceProperties(&deviceProp, dev)); // Ottiene le proprietà del dispositivo CUDA
     CHECK(cudaSetDevice(0)); // Seleziona il dispositivo CUDA
 
+    // Apertura della cartella
+
     DIR *dir;
     struct dirent *entry;
-    if ((dir = opendir(argv[1])) == NULL) {
+    if ((dir = opendir(in_dir)) == NULL) {
         perror("opendir");
         return 1;
     }
@@ -68,7 +102,7 @@ int main(int argc, char **argv) {
         if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
             // Costruisce il percorso completo
             char file_path[1024];
-            snprintf(file_path, sizeof(file_path), "%s/%s", argv[1], entry->d_name);
+            snprintf(file_path, sizeof(file_path), "%s/%s", in_dir, entry->d_name);
 
             // Processa solo i file .fits
             if (strstr(file_path, ".fits") != NULL || strstr(file_path, ".fit")) {
@@ -97,13 +131,14 @@ int main(int argc, char **argv) {
     }
     closedir(dir);
 
+    // Allocazione memoria unificata
+
     u_int16_t **fits_data = nullptr, *mean = nullptr;
     float *std;
     //u_int16_t *fits_data_CPU = nullptr;
     u_int32_t *acc = nullptr;
     //u_int32_t *acc_CPU = nullptr;
 
-    // Allocazione memoria unificata
     CHECK(cudaMallocManaged(&fits_data, image_num * sizeof(u_int16_t*)));
     for (int i = 0; i < image_num; i++) {
         CHECK(cudaMallocManaged(&fits_data[i], npixels * sizeof(u_int16_t)));
@@ -116,8 +151,9 @@ int main(int argc, char **argv) {
     CHECK(cudaMallocManaged(&mean, npixels * sizeof(u_int16_t)));
     CHECK(cudaMemAdvise(mean, npixels * sizeof(u_int16_t), cudaMemAdviseSetPreferredLocation, dev));
 
+    // Lettura dei file .fits e caricamento dei dati in memoria (unificata)
 
-    if ((dir = opendir(argv[1])) == NULL) {
+    if ((dir = opendir(in_dir)) == NULL) {
         perror("opendir");
         return 1;
     }
@@ -125,7 +161,7 @@ int main(int argc, char **argv) {
         if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
             // Costruisce il percorso completo
             char file_path[1024];
-            snprintf(file_path, sizeof(file_path), "%s/%s", argv[1], entry->d_name);
+            snprintf(file_path, sizeof(file_path), "%s/%s", in_dir, entry->d_name);
 
             // Processa solo i file .fits
             if (strstr(file_path, ".fits") != NULL || strstr(file_path, ".fit")) {
@@ -174,7 +210,8 @@ int main(int argc, char **argv) {
     CHECK(cudaDeviceSynchronize());
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
-    save_image_fits("output/image", mean, width, height, depth);
+    
+    save_image_fits(out_dir, mean, width, height, depth);
     //*/
 
     // Calcola la media con algoritmo Alfa Sigma sulla CPU

@@ -80,6 +80,12 @@ void save_image_fits(char const *output_dir_path, u_int16_t *image_data, int wid
     char output_path[1024];
     strcpy(output_path, output_dir_path);
 
+    if (output_path[strlen(output_path) - 1] == '/') {
+        strcat(output_path, "image");
+    } else {
+        strcat(output_path, "/image");
+    }
+
     //aggiungo data, ora ed estensione al nome del file
     char timestamp_str[23];
     time_t rawtime;

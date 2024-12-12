@@ -41,9 +41,9 @@ __device__ inline void computeStdDev(float *std, u_int16_t mean, u_int16_t **ima
 }
 
 // filtro i pixel con valore fuori dal range, mettendoli a 0
-__device__ inline void filterPixels(u_int16_t *mean, float std, u_int16_t **image, int idx, int k, int numImages, int npixels) {
+__device__ inline void filterPixels(u_int16_t mean, float std, u_int16_t **image, int idx, int k, int numImages, int npixels) {
     for (int i = 0; i < numImages; i++) {
-        if (image[i][idx] > mean[idx] + (k * std) || image[i][idx] < mean[idx] - (k * std)) {
+        if (image[i][idx] > mean + (k * std) || image[i][idx] < mean - (k * std)) {
             image[i][idx] = 0;
         }
     }
@@ -57,7 +57,7 @@ __global__ void compute_alfa_sigma(u_int16_t **image, u_int16_t *mean, int numIm
         for (int i = 0; i < 5; i++) {
             computePartialMean(image, &part_mean, idx, numImages, npixels);
             computeStdDev(&std, part_mean, image, idx, numImages, npixels);
-            filterPixels(mean, std, image, idx, 3, numImages, npixels);
+            filterPixels(part_mean, std, image, idx, 3, numImages, npixels);
         }
         computeMean(image, mean, idx, numImages, npixels);
     }

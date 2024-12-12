@@ -69,13 +69,13 @@ __device__ inline void computeStdDevInline(float *std, u_int16_t *mean, u_int16_
     std[idx] = immagini > 0 ? sqrt(std[idx] / immagini) : 0.0f;
 }
 
-__device__ inline void computeStdDevInlineNOSTD(float *std, u_int16_t *mean, u_int16_t **image, int idx, int numImages, int npixels) {
+__device__ inline void computeStdDevInlineNOSTD(float *std, u_int16_t mean, u_int16_t **image, int idx, int numImages, int npixels) {
     u_int16_t immagini = 0;
     *std = 0.0f;
     for (int i = 0; i < numImages; i++) {
         if (image[i][idx] > 0) {
             immagini++;
-            *std += ((float) image[i][idx] - mean[idx]) * (image[i][idx] - mean[idx]);
+            *std += ((float) image[i][idx] - mean) * (image[i][idx] - mean);
         }
     }
     *std = immagini > 0 ? sqrt(*std / immagini) : 0.0f;
@@ -128,7 +128,7 @@ __global__ void compute_alfa_sigma_NOSTD(u_int16_t **image, u_int16_t *mean, int
     if (idx < npixels) {
         for (int i = 0; i < 5; i++) {
             computePartialMeanInline(image, &part_mean, idx, numImages, npixels);
-            computeStdDevInlineNOSTD(&std, mean, image, idx, numImages, npixels);
+            computeStdDevInlineNOSTD(&std, part_mean, image, idx, numImages, npixels);
             filterPixelsInlineNOSTD(mean, std, image, idx, 3, numImages, npixels);
         }
         computeMeanInline(image, mean, idx, numImages, npixels);

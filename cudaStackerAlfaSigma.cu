@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
     // Scansione della cartella
 
     fitsfile *fptr = nullptr;
-    int width, height, depth, new_width, new_height, new_depth, image_count = 0, image_num = 0, status, block_size = 256, grid_size;
+    int width, height, depth, new_width, new_height, new_depth, image_count = 0, image_num = 0, status, block_size = 512, grid_size;
     size_t npixels;
 
     while ((entry = readdir(dir)) != NULL) {

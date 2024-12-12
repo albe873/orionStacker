@@ -84,12 +84,12 @@ void save_image_fits(char const *output_dir_path, u_int16_t *image_data, int wid
     remove_trailing_slash(output_path);
 
     //aggiungo data, ora ed estensione al nome del file
-    char timestamp_str[23];
+    char timestamp_str[29];
     time_t rawtime;
     struct tm *timeinfo;
     time(&rawtime);
     timeinfo = localtime(&rawtime);
-    strftime(timestamp_str, sizeof(timestamp_str), "_%Y%m%d_%H%M%S.fits", timeinfo);
+    strftime(timestamp_str, sizeof(timestamp_str), "/image_%Y%m%d_%H%M%S.fits", timeinfo);
     strcat(output_path, timestamp_str);
 
     if (fits_create_file(&fptr, output_path, &status)) {

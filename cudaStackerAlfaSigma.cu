@@ -206,7 +206,7 @@ int main(int argc, char **argv) {
     computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
     */
 
-    compute_alfa_sigma<<<grid_size, block_size>>>(fits_data, mean, std, image_count, npixels);   
+    compute_alfa_sigma_new<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);   
     CHECK(cudaDeviceSynchronize());
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);

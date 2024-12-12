@@ -121,7 +121,7 @@ __global__ void compute_alfa_sigma(u_int16_t **image, u_int16_t *mean, float *st
     }
 }
 
-__global__ void compute_alfa_sigma_NOSTD(u_int16_t **image, u_int16_t *mean, int numImages, int npixels) {
+__global__ void compute_alfa_sigma_new(u_int16_t **image, u_int16_t *mean, int numImages, int npixels) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     float std;
     u_int16_t part_mean;

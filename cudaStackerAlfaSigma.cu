@@ -49,10 +49,13 @@ int main(int argc, char **argv) {
     const char *out_dir = nullptr;
 
     int opt, option_index = 0;
+    float kappa = 3.0, sigma = 2.0;
 
     static struct option long_options[] = {
         {"input-directory", required_argument, 0, 'i'},
         {"output-directory", required_argument, 0, 'o'},
+        {"kappa", optional_argument, 0, 'k'},
+        {"sigma", optional_argument, 0, 's'},
         {0, 0, 0, 0}
     };
 
@@ -63,6 +66,12 @@ int main(int argc, char **argv) {
                 break;
             case 'o':
                 out_dir = optarg;
+                break;
+            case 'k':
+                kappa = atoi(optarg);
+                break;
+            case 's': 
+                sigma = atof(optarg);
                 break;
             default:
                 fprintf(stderr, "Usage: %s --input-directory <input/dir> --output-directory </output/dir>\n", argv[0]);
@@ -201,7 +210,7 @@ int main(int argc, char **argv) {
     computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
     */
 
-    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);   
+    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels, kappa, sigma);   
     CHECK(cudaDeviceSynchronize());
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
@@ -233,7 +242,7 @@ int main(int argc, char **argv) {
     }
     CHECK(cudaFree(fits_data));
     CHECK(cudaFree(mean));
-    
+
     CHECK(cudaDeviceReset());
     exit(0);
 }

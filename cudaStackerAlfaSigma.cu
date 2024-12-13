@@ -49,7 +49,8 @@ int main(int argc, char **argv) {
     const char *out_dir = nullptr;
 
     int opt, option_index = 0;
-    float kappa = 3.0, sigma = 2.0;
+    float kappa = 3.0;
+    int sigma = 5;
 
     static struct option long_options[] = {
         {"input-directory", required_argument, 0, 'i'},
@@ -121,8 +122,7 @@ int main(int argc, char **argv) {
                     print_fits_metadata(fptr);
                     get_image_dimensions(fptr, &width, &height, &depth);
                     npixels = width * height * depth;
-                    grid_size = (npixels / 2 + block_size) / block_size;
-
+                    grid_size = (npixels / 2 + block_size - 1) / block_size;
                 }
                 else {
                     get_image_dimensions(fptr, &new_width, &new_height, &new_depth);

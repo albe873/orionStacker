@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
                     print_fits_metadata(fptr);
                     get_image_dimensions(fptr, &width, &height, &depth);
                     npixels = width * height * depth;
-                    grid_size = (npixels + block_size - 1) / block_size;
+                    grid_size = (npixels / 2 + block_size) / block_size;
 
                 }
                 else {
@@ -134,9 +134,7 @@ int main(int argc, char **argv) {
     // Allocazione memoria unificata
 
     u_int16_t **fits_data = nullptr, *mean = nullptr;
-    float *std;
     //u_int16_t *fits_data_CPU = nullptr;
-    u_int32_t *acc = nullptr;
     //u_int32_t *acc_CPU = nullptr;
 
     CHECK(cudaMallocManaged(&fits_data, image_num * sizeof(u_int16_t*)));
@@ -144,9 +142,6 @@ int main(int argc, char **argv) {
         CHECK(cudaMallocManaged(&fits_data[i], npixels * sizeof(u_int16_t)));
         CHECK(cudaMemPrefetchAsync(fits_data[i], npixels * sizeof(u_int16_t), dev));
     }
-
-    CHECK(cudaMallocManaged(&std, npixels * sizeof(float)));
-    CHECK(cudaMemAdvise(std, npixels * sizeof(float), cudaMemAdviseSetPreferredLocation, dev));
 
     CHECK(cudaMallocManaged(&mean, npixels * sizeof(u_int16_t)));
     CHECK(cudaMemAdvise(mean, npixels * sizeof(u_int16_t), cudaMemAdviseSetPreferredLocation, dev));
@@ -206,7 +201,7 @@ int main(int argc, char **argv) {
     computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
     */
 
-    compute_alfa_sigma<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);   
+    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);   
     CHECK(cudaDeviceSynchronize());
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
@@ -238,9 +233,7 @@ int main(int argc, char **argv) {
     }
     CHECK(cudaFree(fits_data));
     CHECK(cudaFree(mean));
-    CHECK(cudaFree(acc));
-    CHECK(cudaFree(std));
-
+    
     CHECK(cudaDeviceReset());
     exit(0);
 }

@@ -41,10 +41,10 @@ __global__ void to_grayscale_fits(u_int16_t *image, u_int16_t *gray_image, int n
         u_int16_t red2 = image[idx2];
 
         u_int16_t green1 = image[idx1 + npixels];
-        u_int16_t green2 = image[idx2 + 2*npixels];
+        u_int16_t green2 = image[idx2 + npixels];
 
         u_int16_t blue1 = image[idx1 + 2*npixels];
-        u_int16_t blue2 = image[idx2 + 3*npixels];
+        u_int16_t blue2 = image[idx2 + 2*npixels];
 
         gray_image[idx1] = 0.299*red1 + 0.587*green1 + 0.114*blue1;
         gray_image[idx2] = 0.299*red2 + 0.587*green2 + 0.114*blue2;

@@ -4,7 +4,6 @@
 #include "host_alfa_sigma.h"
 
 #include <stdio.h>
-#include <fitsio.h>
 #include <dirent.h>
 #include <string.h>
 #include <ctime>
@@ -23,7 +22,7 @@ hipcc cudaStackerAlfaSigma.cu.hip  -o cudaStackerAlfaSigma -lcfitsio -O3 -Wall
 
 /*
 --  to compile for cuda, use the following command
-nvcc cudaStackerAlfaSigma.cu -o ucdaStackerAlfaSigma -lcfitsio -O3
+nvcc cudaStackerAlfaSigma.cu -o cudaStackerAlfaSigma -lcfitsio -O3
 */
 
 #define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)

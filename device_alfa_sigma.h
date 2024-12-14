@@ -88,7 +88,7 @@ __global__ void compute_alfa_sigma2(u_int16_t **image, u_int16_t *mean, int numI
     float std1, std2;
     u_int16_t part_mean1, part_mean2;
     
-    if (idx1 < npixels && idx2 < npixels) {
+    if (idx2 < npixels) {
         for (int i = 0; i < s; i++) {
             computePartialMean2(image, &part_mean1, &part_mean2, idx1, idx2, numImages);
             computeStdDev2(&std1, &std2, part_mean1, part_mean2, image, idx1, idx2, numImages);

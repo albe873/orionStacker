@@ -66,7 +66,7 @@ __global__ void simple_threshold(u_int16_t *image, int npixels, u_int16_t thresh
     }
 }
 
-__global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, int width, int height, u_int8_t windowSize, u_int16_t offset) {
+__global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, int width, int height, u_int16_t windowSize, u_int16_t offset) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -79,17 +79,44 @@ __global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, 
 
         // Calcola la media del blocco locale
         u_int32_t sum = 0;
-        for (u_int16_t i = startY; i <= endY; i++) {
-            for (u_int16_t j = startX; j <= endX; j++) {
+        for (u_int32_t i = startY; i < endY; i++) {
+            for (u_int32_t j = startX; j < endX; j++) {
                 sum += image[i * width + j];
             }
         }
         int localMean = sum / ((endX - startX) * (endY - startY));
         int pixel = image[y * width + x];
 
+        if (x == 0 && y == 0) {
+            printf("Local mean: %d\n", localMean);
+            printf("windowSize: %d, startX %d, endX: %d, startY: %d, endY %d\n", windowSize, startX, endX, startY, endY);
+        }
+
         // Applica il thresholding adattivo
-        output[y * width + x] = pixel > (localMean - offset) ? 65535 : 0;
-        output[y * width + x] = pixel;
+        output[y * width + x] = (pixel > (localMean + offset)) ? 65535 : 0;
+    }
+}
+
+__global__ void reduce_image(u_int16_t *image, u_int16_t *reduced_image, int width, int height, int reduce_factor) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    int new_width = width / reduce_factor;
+    int new_height = height / reduce_factor;
+
+    if (x < new_width && y < new_height) {
+        u_int32_t sum = 0;
+        for (int i = 0; i < reduce_factor; i++) {
+            for (int j = 0; j < reduce_factor; j++) {
+                int orig_x = x * reduce_factor + i;
+                int orig_y = y * reduce_factor + j;
+                if (orig_x >= width || orig_y >= height) {
+                    continue;
+                }
+                sum += image[orig_y * width + orig_x];
+            }
+        }
+        reduced_image[y * new_width + x] = sum / (reduce_factor * reduce_factor);
     }
 }
 
@@ -98,16 +125,26 @@ int main(int argc, char **argv) {
 
     char *filename = nullptr;
     int opt, option_index = 0;
+    int offset = 1000;
+    int reduce_factor = 8;
 
     static struct option long_options[] = {
         {"input-file", required_argument, 0, 'f'},
+        {"offset", optional_argument, 0, 'o'},
+        {"reduce-factor", optional_argument, 0, 'r'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "i:o:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "f:o:r:", long_options, &option_index)) != -1) {
         switch (opt) {
-            case 'i':
+            case 'f':
                 filename = optarg;
+                break;
+            case 'o':
+                offset = atoi(optarg);
+                break;
+            case 'r':
+                reduce_factor = atoi(optarg);
                 break;
             default:
                 fprintf(stderr, "Usage: %s --input-file <image.fits>\n", argv[0]);
@@ -143,25 +180,34 @@ int main(int argc, char **argv) {
     CHECK(cudaMallocManaged(&gray_image, npixels * sizeof(u_int16_t)));
     CHECK(cudaMemPrefetchAsync(gray_image, npixels * sizeof(u_int16_t), dev));
 
+    u_int16_t *reduced_image = nullptr;
+    CHECK(cudaMallocManaged(&reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t)));
+    CHECK(cudaMemPrefetchAsync(reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t), dev));
+
     u_int16_t *output_image = nullptr;
     CHECK(cudaMallocManaged(&output_image, npixels * sizeof(u_int16_t)));
     CHECK(cudaMemPrefetchAsync(output_image, npixels * sizeof(u_int16_t), dev));
 
     get_fits_data(fptr, totpixels, fits_data);
-    int block_size = 256;
-    int grid_size = (npixels / 2 + block_size - 1) / block_size;
+    dim3 block_size(256);
+    dim3 grid_size((npixels / 2 + block_size.x - 1) / block_size.x);
 
     // se depth == 1, allora bisogna applicare il filtro di bayer???
 
     to_grayscale_fits<<<grid_size, block_size>>>(fits_data, gray_image, npixels);
     CHECK(cudaDeviceSynchronize());
     save_image_fits("output_gray", gray_image, width, height, 1);
-    
+
+    sleep(2);
+    reduce_image<<<grid_size, block_size>>>(gray_image, reduced_image, width, height, reduce_factor);
+    save_image_fits("output_gray", reduced_image, width/reduce_factor, height/reduce_factor, 1);
+
     sleep(2);
 
     //simple_threshold<<<grid_size, block_size>>>(gray_image, npixels, 1500);
-    grid_size = (width + block_size - 1) / block_size;
-    adaptiveThresholdingKernel<<<grid_size, block_size>>>(gray_image, output_image, width, height, 255, 300);
+    dim3 dim3BlockSize(16, 16);
+    dim3 dim3GridSize((width + dim3BlockSize.x - 1) / dim3BlockSize.x, (height + dim3BlockSize.y - 1) / dim3BlockSize.y);
+    adaptiveThresholdingKernel<<<dim3GridSize, dim3BlockSize>>>(gray_image, output_image, width, height, 255, offset);
     CHECK(cudaDeviceSynchronize());
 
     save_image_fits("output_gray", output_image, width, height, 1);

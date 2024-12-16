@@ -200,6 +200,7 @@ int main(int argc, char **argv) {
 
     sleep(2);
     reduce_image<<<grid_size, block_size>>>(gray_image, reduced_image, width, height, reduce_factor);
+    CHECK(cudaDeviceSynchronize());
     save_image_fits("output_gray", reduced_image, width/reduce_factor, height/reduce_factor, 1);
 
     sleep(2);

@@ -66,6 +66,34 @@ __global__ void simple_threshold(u_int16_t *image, int npixels, u_int16_t thresh
     }
 }
 
+__global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, int width, int height, u_int8_t windowSize, u_int16_t offset) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x < width && y < height) {
+        windowSize /= 2;
+        int startX = max(x - windowSize, 0);
+        int endX = min(x + windowSize, width);
+        int startY = max(y - windowSize, 0);
+        int endY = min(y + windowSize, height);
+
+        // Calcola la media del blocco locale
+        u_int32_t sum = 0;
+        for (u_int16_t i = startY; i <= endY; i++) {
+            for (u_int16_t j = startX; j <= endX; j++) {
+                sum += image[i * width + j];
+            }
+        }
+        int localMean = sum / ((endX - startX) * (endY - startY));
+        int pixel = image[y * width + x];
+
+        // Applica il thresholding adattivo
+        output[y * width + x] = pixel > (localMean - offset) ? 65535 : 0;
+        output[y * width + x] = pixel;
+    }
+}
+
+
 int main(int argc, char **argv) {
 
     char *filename = nullptr;
@@ -115,6 +143,10 @@ int main(int argc, char **argv) {
     CHECK(cudaMallocManaged(&gray_image, npixels * sizeof(u_int16_t)));
     CHECK(cudaMemPrefetchAsync(gray_image, npixels * sizeof(u_int16_t), dev));
 
+    u_int16_t *output_image = nullptr;
+    CHECK(cudaMallocManaged(&output_image, npixels * sizeof(u_int16_t)));
+    CHECK(cudaMemPrefetchAsync(output_image, npixels * sizeof(u_int16_t), dev));
+
     get_fits_data(fptr, totpixels, fits_data);
     int block_size = 256;
     int grid_size = (npixels / 2 + block_size - 1) / block_size;
@@ -127,8 +159,10 @@ int main(int argc, char **argv) {
     
     sleep(2);
 
-    simple_threshold<<<grid_size, block_size>>>(gray_image, npixels, 1500);
+    //simple_threshold<<<grid_size, block_size>>>(gray_image, npixels, 1500);
+    grid_size = (width + block_size - 1) / block_size;
+    adaptiveThresholdingKernel<<<grid_size, block_size>>>(gray_image, output_image, width, height, 255, 300);
     CHECK(cudaDeviceSynchronize());
 
-    save_image_fits("output_gray", gray_image, width, height, 1);
+    save_image_fits("output_gray", output_image, width, height, 1);
 }

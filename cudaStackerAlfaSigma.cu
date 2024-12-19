@@ -148,7 +148,6 @@ int main(int argc, char **argv) {
     CHECK(cudaMallocManaged(&fits_data, image_num * sizeof(u_int16_t*)));
     for (int i = 0; i < image_num; i++) {
         CHECK(cudaMallocManaged(&fits_data[i], npixels * sizeof(u_int16_t)));
-        CHECK(cudaMemPrefetchAsync(fits_data[i], npixels * sizeof(u_int16_t), dev));
     }
 
     CHECK(cudaMallocManaged(&mean, npixels * sizeof(u_int16_t)));
@@ -179,14 +178,15 @@ int main(int argc, char **argv) {
                 }
 
                 get_fits_data(fptr, npixels, fits_data[image_count]);
+                CHECK(cudaMemPrefetchAsync(fits_data[image_count], npixels * sizeof(u_int16_t), dev));
                 fits_close_file(fptr, &status);
                 image_count++;
 
             }
         }
     }
+    
     closedir(dir);
-
     double t_start, t_elapsed;
 
     // Calcola la media con algoritmo Alfa Sigma

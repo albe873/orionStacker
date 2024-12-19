@@ -3,7 +3,6 @@
 
 #include <stdio.h>
 #include <fitsio.h>
-#include <dirent.h>
 #include <string.h>
 #include <time.h>
 

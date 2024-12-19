@@ -5,7 +5,7 @@
 #include <fitsio.h>
 #include <dirent.h>
 #include <string.h>
-#include <ctime>
+#include <math.h>
 
 // controllo risultato CPU-GPU media standard
 void accumulatePixelsCPU(u_int32_t *acc, u_int16_t *image, int npixels) {
@@ -13,7 +13,7 @@ void accumulatePixelsCPU(u_int32_t *acc, u_int16_t *image, int npixels) {
         acc[i] += image[i];
     }
 }
-void computeMeanAdvCPU(u_int16_t **image, u_int16_t *mean, int numImages, int npixels) {
+void computeMeanCPU(u_int16_t **image, u_int16_t *mean, int numImages, int npixels) {
     for (int i = 0; i < npixels; i++) {
         u_int16_t immagini = 0;
         u_int32_t acc = 0;

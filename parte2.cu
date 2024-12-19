@@ -5,7 +5,7 @@
 #include <getopt.h>
 #include <unistd.h>
 
-/*  --- AMD HIPify tool & HCC compiler ---
+/*  --- AMD HIPify tool & HIPCC compiler ---
 
 --  to generate hipified code, use the following command
 hipify-clang parte2.cu --cuda-path=/opt/cuda
@@ -52,7 +52,7 @@ __global__ void to_grayscale_fits(u_int16_t *image, u_int16_t *gray_image, int n
 }
 
 
-__global__ void simple_threshold(u_int16_t *image, int npixels, u_int16_t threshold) {
+__global__ void simple_threshold(u_int16_t *image, u_int16_t *output, int npixels, u_int16_t threshold) {
     int idx1 = blockIdx.x * blockDim.x + threadIdx.x;
     idx1 *= 2;
     int idx2 = idx1 + 1;
@@ -61,8 +61,8 @@ __global__ void simple_threshold(u_int16_t *image, int npixels, u_int16_t thresh
         u_int16_t val1 = image[idx1];
         u_int16_t val2 = image[idx2];
 
-        image[idx1] = val1 > threshold ? 65535 : 0;
-        image[idx2] = val2 > threshold ? 65535 : 0;
+        output[idx1] = val1 > threshold ? 65535 : 0;
+        output[idx2] = val2 > threshold ? 65535 : 0;
     }
 }
 
@@ -86,11 +86,6 @@ __global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, 
         }
         int localMean = sum / ((endX - startX) * (endY - startY));
         int pixel = image[y * width + x];
-
-        if (x == 0 && y == 0) {
-            printf("Local mean: %d\n", localMean);
-            printf("windowSize: %d, startX %d, endX: %d, startY: %d, endY %d\n", windowSize, startX, endX, startY, endY);
-        }
 
         // Applica il thresholding adattivo
         output[y * width + x] = (pixel > (localMean + offset)) ? 65535 : 0;
@@ -125,26 +120,47 @@ int main(int argc, char **argv) {
 
     char *filename = nullptr;
     int opt, option_index = 0;
-    int offset = 1000;
+    int threshold = 1000;
     int reduce_factor = 8;
+    int window_size = 255;
+
+    enum ThresholdType {
+        TR_SIMPLE,
+        TR_ADAPTIVE
+    };
+    ThresholdType threshold_algorithm = TR_SIMPLE;
 
     static struct option long_options[] = {
         {"input-file", required_argument, 0, 'f'},
-        {"offset", optional_argument, 0, 'o'},
+        {"threshold", optional_argument, 0, 't'},
         {"reduce-factor", optional_argument, 0, 'r'},
+        {"threshold-algorith", optional_argument, 0, 'a'},
+        {"window-size", optional_argument, 0, 'w'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "f:o:r:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'f':
                 filename = optarg;
                 break;
-            case 'o':
-                offset = atoi(optarg);
+            case 't':
+                threshold = atoi(optarg);
                 break;
             case 'r':
                 reduce_factor = atoi(optarg);
+                break;
+            case 'a':
+                if (strcmp(optarg, "simple") == 0) {
+                    threshold_algorithm = TR_SIMPLE;
+                } else if (strcmp(optarg, "adaptive") == 0) {
+                    threshold_algorithm = TR_ADAPTIVE;
+                } else {
+                    fprintf(stderr, "Invalid threshold algorithm, using default\n");
+                }
+                break;
+            case 'w':
+                window_size = atoi(optarg);
                 break;
             default:
                 fprintf(stderr, "Usage: %s --input-file <image.fits>\n", argv[0]);
@@ -189,26 +205,31 @@ int main(int argc, char **argv) {
     CHECK(cudaMemPrefetchAsync(output_image, npixels * sizeof(u_int16_t), dev));
 
     get_fits_data(fptr, totpixels, fits_data);
-    dim3 block_size(256);
-    dim3 grid_size((npixels / 2 + block_size.x - 1) / block_size.x);
+    dim3 block_size_1d(256);
+    dim3 grid_size_1d((npixels / 2 + block_size_1d.x - 1) / block_size_1d.x);
+
+    dim3 block_size_2d(16, 16);
+    dim3 grid_size_2d(  (width + block_size_2d.x - 1) / block_size_2d.x, 
+                        (height + block_size_2d.y - 1) / block_size_2d.y
+                    );
 
     // se depth == 1, allora bisogna applicare il filtro di bayer???
-
-    to_grayscale_fits<<<grid_size, block_size>>>(fits_data, gray_image, npixels);
+    to_grayscale_fits<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
     CHECK(cudaDeviceSynchronize());
-    save_image_fits("output_gray", gray_image, width, height, 1);
+
+    reduce_image<<<grid_size_2d, block_size_2d>>>(gray_image, reduced_image, width, height, reduce_factor);
+    CHECK(cudaDeviceSynchronize());
+    //save_image_fits("output_gray", reduced_image, width/reduce_factor, height/reduce_factor, 1);
 
     sleep(2);
-    reduce_image<<<grid_size, block_size>>>(gray_image, reduced_image, width, height, reduce_factor);
-    CHECK(cudaDeviceSynchronize());
-    save_image_fits("output_gray", reduced_image, width/reduce_factor, height/reduce_factor, 1);
-
-    sleep(2);
-
-    //simple_threshold<<<grid_size, block_size>>>(gray_image, npixels, 1500);
-    dim3 dim3BlockSize(16, 16);
-    dim3 dim3GridSize((width + dim3BlockSize.x - 1) / dim3BlockSize.x, (height + dim3BlockSize.y - 1) / dim3BlockSize.y);
-    adaptiveThresholdingKernel<<<dim3GridSize, dim3BlockSize>>>(gray_image, output_image, width, height, 255, offset);
+    switch (threshold_algorithm) {
+        case TR_SIMPLE:
+            simple_threshold<<<grid_size_1d, block_size_1d>>>(gray_image, output_image, npixels, threshold);
+            break;
+        case TR_ADAPTIVE:
+            adaptiveThresholdingKernel<<<grid_size_2d, block_size_2d>>>(gray_image, output_image, width, height, window_size, threshold);
+            break;
+    }
     CHECK(cudaDeviceSynchronize());
 
     save_image_fits("output_gray", output_image, width, height, 1);

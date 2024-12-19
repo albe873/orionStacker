@@ -5,7 +5,7 @@
 #include <fitsio.h>
 #include <dirent.h>
 #include <string.h>
-#include <ctime>
+#include <time.h>
 
 
 void remove_trailing_slash(char *in_dir) {

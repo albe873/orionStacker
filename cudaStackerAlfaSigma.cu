@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "i:o:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:o:k:s", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'i':
                 in_dir = optarg;
@@ -86,7 +86,6 @@ int main(int argc, char **argv) {
 
 
     // Imposta il device CUDA
-
     int dev = 0;
     cudaDeviceProp deviceProp;
     CHECK(cudaGetDeviceProperties(&deviceProp, dev)); // Ottiene le proprietà del dispositivo CUDA
@@ -104,7 +103,8 @@ int main(int argc, char **argv) {
     // Scansione della cartella
 
     fitsfile *fptr = nullptr;
-    int width, height, depth, new_width, new_height, new_depth, image_count = 0, image_num = 0, status, block_size = 512, grid_size;
+    int width, height, depth, new_width, new_height, new_depth, image_count = 0, image_num = 0, status;
+    dim3 block_size(512), grid_size;
     size_t npixels;
 
     while ((entry = readdir(dir)) != NULL) {
@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
                     print_fits_metadata(fptr);
                     get_image_dimensions(fptr, &width, &height, &depth);
                     npixels = width * height * depth;
-                    grid_size = (npixels / 2 + block_size - 1) / block_size;
+                    grid_size = (npixels / 2 + block_size.x - 1) / block_size.x;
                 }
                 else {
                     get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
@@ -190,52 +190,20 @@ int main(int argc, char **argv) {
     double t_start, t_elapsed;
 
     // Calcola la media con algoritmo Alfa Sigma
-    ///*
+    
     printf("Computing mean with Alfa Sigma with GPU ...\n");
     t_start = cpuSecond();
-    /*
-    for (int i = 0; i < 5; i++) {
-        computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
-        CHECK(cudaDeviceSynchronize());
-
-        CHECK(cudaMemset(std, 0, npixels * sizeof(float)));
-        computeStdDev<<<grid_size, block_size>>>(std, mean, fits_data, image_count, npixels);
-        CHECK(cudaDeviceSynchronize());
-        
-        filterPixels<<<grid_size, block_size>>>(mean, std, fits_data, 3, image_count, npixels);
-        CHECK(cudaDeviceSynchronize());
-    }
-
-    computeMeanAdv<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);
-    */
 
     compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels, kappa, sigma);   
     CHECK(cudaDeviceSynchronize());
+    
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
     
     save_image_fits(out_dir, mean, width, height, depth);
-    //*/
 
-    // Calcola la media con algoritmo Alfa Sigma sulla CPU
-    /*
-    u_int16_t *meanCPU = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
-    float *stdCPU = (float *) malloc(npixels * sizeof(float));
-    t_start = cpuSecond();
-    for (int i = 0; i < 5; i++) {
-        computeMeanAdvCPU(fits_data, meanCPU, image_count, npixels);
-        computeStdDevCPU(stdCPU, meanCPU, fits_data, image_count, npixels);
-        filterPixelsCPU(meanCPU, stdCPU, fits_data, 3, image_count, npixels);
-    }
-    computeMeanAdvCPU(fits_data, meanCPU, image_count, npixels);
-    t_elapsed = cpuSecond() - t_start;
-    printf("CPU Alfa Sigma elapsed time: %f\n", t_elapsed);
-    save_image_fits("output/image", meanCPU, width, height, depth);
-    free(meanCPU);
-    free(stdCPU);
-    //*/
 
-    // Calcola la media con accumulo dei pixel
+    // free memory
     for (int i = 0; i < image_num; i++) {
         CHECK(cudaFree(fits_data[i]));
     }
@@ -243,5 +211,6 @@ int main(int argc, char **argv) {
     CHECK(cudaFree(mean));
 
     CHECK(cudaDeviceReset());
+
     exit(0);
 }

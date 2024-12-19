@@ -8,6 +8,10 @@
 #include <getopt.h>
 #include <math.h>
 
+/*
+gcc cudaStackerAlfaSigmaCPU.c -o cudaStackerAlfaSigmaCPU -lcfitsio -lm -O3 -march=native -Wall
+*/
+
 double cpuSecond() {
     struct timespec ts;
     timespec_get(&ts, TIME_UTC);
@@ -71,7 +75,7 @@ int main(int argc, char **argv) {
 
     fitsfile *fptr = NULL;
     int width, height, depth, new_width, new_height, new_depth, image_count = 0, image_num = 0, status;
-    size_t npixels;
+    size_t npixels = 0;
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
@@ -110,9 +114,9 @@ int main(int argc, char **argv) {
     u_int32_t *acc_CPU = NULL;
     float *std_CPU = NULL;
 
-    fits_data = (u_int16_t **) malloc(image_num * sizeof(u_int16_t));
-    for (int i = 0; i < npixels; i++) {
-        fits_data[i] = (u_int16_t *) malloc(image_num * npixels * sizeof(u_int16_t));
+    fits_data = (u_int16_t **) malloc(image_num * sizeof(u_int16_t *));
+    for (int i = 0; i < image_num; i++) {
+        fits_data[i] = (u_int16_t *) malloc(npixels * sizeof(u_int16_t));
     }
 
     acc_CPU = (u_int32_t *) malloc(npixels * sizeof(u_int32_t));
@@ -165,7 +169,7 @@ int main(int argc, char **argv) {
     computeMeanCPU(fits_data, mean_CPU, image_count, npixels);
     t_elapsed = cpuSecond() - t_start;
     printf("CPU Alfa Sigma elapsed time: %f\n", t_elapsed);
-    save_image_fits("output/image", mean_CPU, width, height, depth);
+    save_image_fits(out_dir, mean_CPU, width, height, depth);
 
 
     // Pulizia della memoria

@@ -13,3 +13,4 @@ cudaStackerMean
 cudaStackerAlfaSigma
 verify_result
 parte2
+cudaStackerAlfaSigmaCPU

@@ -71,6 +71,8 @@ __global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, 
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (x < width && y < height) {
+        
+        // finestra quadrata centrata sul pixel (x, y)
         windowSize /= 2;
         int startX = max(x - windowSize, 0);
         int endX = min(x + windowSize, width);
@@ -92,6 +94,7 @@ __global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, 
     }
 }
 
+// Ogni thread si occupa di un pixel dell'immagine ridotta.
 __global__ void reduce_image(u_int16_t *image, u_int16_t *reduced_image, int width, int height, int reduce_factor) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;

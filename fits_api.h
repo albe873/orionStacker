@@ -24,7 +24,7 @@ void open_fits(char *file_path, fitsfile **fptr) {
     }
 }
 
-void get_image_dimensions(fitsfile *fptr, int *width, int *height, int *depth) {
+void get_image_dimensions(fitsfile *fptr, long *width, long *height, long *depth) {
     int status = 0;
     int naxis;
     long naxes[3] = {1, 1, 1};

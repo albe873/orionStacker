@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
 
     int opt, option_index = 0;
     float kappa = 3.0;
-    int sigma = 5;
+    u_int16_t sigma = 5;
 
     static struct option long_options[] = {
         {"input-directory", required_argument, 0, 'i'},
@@ -103,9 +103,11 @@ int main(int argc, char **argv) {
     // Scansione della cartella
 
     fitsfile *fptr = nullptr;
-    int width, height, depth, new_width, new_height, new_depth, image_count = 0, image_num = 0, status;
+    long width, height, depth, new_width, new_height, new_depth;
+    int status;
+    u_int16_t image_count = 0, image_num = 0;
     dim3 block_size(512), grid_size;
-    size_t npixels;
+    u_int64_t npixels;
 
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
@@ -142,8 +144,6 @@ int main(int argc, char **argv) {
     // Allocazione memoria unificata
 
     u_int16_t **fits_data = nullptr, *mean = nullptr;
-    //u_int16_t *fits_data_CPU = nullptr;
-    //u_int32_t *acc_CPU = nullptr;
 
     CHECK(cudaMallocManaged(&fits_data, image_num * sizeof(u_int16_t*)));
     for (int i = 0; i < image_num; i++) {

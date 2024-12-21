@@ -3,7 +3,7 @@
 
 
 // calcolo media di tutte le immagini escludendo i pixel con valore 0
-__device__ inline void computeMean2(u_int16_t **image, u_int16_t *mean, int idx1, int idx2, int numImages, int npixels) {
+__device__ inline void computeMean2(u_int16_t **image, u_int16_t *mean, u_int64_t idx1, u_int64_t idx2, u_int16_t numImages) {
     u_int16_t count1 = 0, count2 = 0;
     u_int32_t acc1 = 0, acc2 = 0;
     for (int i = 0; i < numImages; i++) {
@@ -22,7 +22,7 @@ __device__ inline void computeMean2(u_int16_t **image, u_int16_t *mean, int idx1
     mean[idx2] = (count2 > 0) ? acc2 / count2 : 0;
 }
 
-__device__ inline void computePartialMean2(u_int16_t **image, u_int16_t* mean1, u_int16_t* mean2, int idx1, int idx2, int numImages) {
+__device__ inline void computePartialMean2(u_int16_t **image, u_int16_t* mean1, u_int16_t* mean2, u_int32_t idx1, u_int32_t idx2, u_int16_t numImages) {
     u_int32_t acc1 = 0, acc2 = 0;
     u_int16_t count1 = 0, count2 = 0;
     for (int i = 0; i < numImages; i++) {
@@ -42,7 +42,7 @@ __device__ inline void computePartialMean2(u_int16_t **image, u_int16_t* mean1, 
 }
 
 // calcolo deviazione standard
-__device__ inline void computeStdDev2(float *std1, float *std2, u_int16_t mean1, u_int16_t mean2, u_int16_t **image, int idx1, int idx2, int numImages) {
+__device__ inline void computeStdDev2(float *std1, float *std2, u_int16_t mean1, u_int16_t mean2, u_int16_t **image, u_int64_t idx1, u_int64_t idx2, u_int16_t numImages) {
     u_int16_t count1 = 0, count2 = 0;
     for (int i = 0; i < numImages; i++) {
         u_int16_t val1 = image[i][idx1];
@@ -61,7 +61,7 @@ __device__ inline void computeStdDev2(float *std1, float *std2, u_int16_t mean1,
 }
 
 // filtro i pixel con valore fuori dal range, mettendoli a 0
-__device__ inline void filterPixels2(u_int16_t mean1, float std1, u_int16_t mean2, float std2, u_int16_t **image, int idx1, int idx2, float k, int numImages) {
+__device__ inline void filterPixels2(u_int16_t mean1, float std1, u_int16_t mean2, float std2, u_int16_t **image, u_int64_t idx1, u_int64_t idx2, float k, u_int16_t numImages) {
     for (int i = 0; i < numImages; i++) {
         u_int16_t val1 = image[i][idx1];
         u_int16_t val2 = image[i][idx2];
@@ -80,21 +80,21 @@ __device__ inline void filterPixels2(u_int16_t mean1, float std1, u_int16_t mean
     }
 }
 
-__global__ void compute_alfa_sigma2(u_int16_t **image, u_int16_t *mean, int numImages, int npixels, float k, int s) {
-    int idx1 = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void compute_alfa_sigma2(u_int16_t **image, u_int16_t *mean, u_int16_t numImages, u_int64_t npixels, float k, u_int16_t s) {
+    u_int64_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
     idx1 *= 2;
-    int idx2 = idx1 + 1;
+    u_int64_t idx2 = idx1 + 1;
 
     float std1, std2;
     u_int16_t part_mean1, part_mean2;
     
     if (idx2 < npixels) {
-        for (int i = 0; i < s; i++) {
+        for (u_int16_t i = 0; i < s; i++) {
             computePartialMean2(image, &part_mean1, &part_mean2, idx1, idx2, numImages);
             computeStdDev2(&std1, &std2, part_mean1, part_mean2, image, idx1, idx2, numImages);
             filterPixels2(part_mean1, std1, part_mean2, std2, image, idx1, idx2, k, numImages);
         }
-        computeMean2(image, mean, idx1, idx2, numImages, npixels);
+        computeMean2(image, mean, idx1, idx2, numImages);
     }
 
 }

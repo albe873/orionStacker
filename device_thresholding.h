@@ -89,7 +89,11 @@ __global__ void reduce_image(u_int16_t *image, u_int16_t *reduced_image, u_int64
     }
 }
 
-__global__ void adaptiveThresholdingApprossimative(u_int16_t *image, u_int16_t *output, u_int64_t width, u_int64_t height, u_int16_t *reduced_image, u_int16_t reduce_factor, u_int16_t windowSize, u_int16_t offset) {
+__global__ void adaptiveThresholdingApprossimative(
+            u_int16_t *image, u_int16_t *output, u_int64_t width, u_int64_t height,
+            u_int16_t *reduced_image, u_int16_t reduce_factor, u_int16_t windowSize, u_int16_t offset
+    )
+{
     u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
     u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
 

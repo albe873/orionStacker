@@ -1,5 +1,6 @@
 #include "cuda_runtime.h"
 #include "fits_api.h"
+#include "device_thresholding.h"
 
 #include <stdio.h>
 #include <getopt.h>
@@ -14,11 +15,11 @@ hipify-clang parte2.cu --cuda-path=/opt/cuda
 hipcc parte2.cu.hip  -o parte2 -lcfitsio -O3 -Wall
 */
 
-/*
+/*  --- NVCC compiler ---
+
 --  to compile for cuda, use the following command
 nvcc parte2.cu -o parte2 -lcfitsio -O3
 */
-
 
 
 #define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
@@ -30,106 +31,19 @@ inline void cuda_check(cudaError_t error_code, const char *file, int line) {
     }
 }
 
-// fits data is in planar format
-__global__ void to_grayscale_fits(u_int16_t *image, u_int16_t *gray_image, int npixels) {
-    int idx1 = blockIdx.x * blockDim.x + threadIdx.x;
-    idx1 *= 2;
-    int idx2 = idx1 + 1;
-
-    if (idx2 < npixels) {
-        u_int16_t red1 = image[idx1];
-        u_int16_t red2 = image[idx2];
-
-        u_int16_t green1 = image[idx1 + npixels];
-        u_int16_t green2 = image[idx2 + npixels];
-
-        u_int16_t blue1 = image[idx1 + 2*npixels];
-        u_int16_t blue2 = image[idx2 + 2*npixels];
-
-        gray_image[idx1] = 0.299*red1 + 0.587*green1 + 0.114*blue1;
-        gray_image[idx2] = 0.299*red2 + 0.587*green2 + 0.114*blue2;
-    }
-}
-
-
-__global__ void simple_threshold(u_int16_t *image, u_int16_t *output, int npixels, u_int16_t threshold) {
-    int idx1 = blockIdx.x * blockDim.x + threadIdx.x;
-    idx1 *= 2;
-    int idx2 = idx1 + 1;
-
-    if (idx2 < npixels) {
-        u_int16_t val1 = image[idx1];
-        u_int16_t val2 = image[idx2];
-
-        output[idx1] = val1 > threshold ? 65535 : 0;
-        output[idx2] = val2 > threshold ? 65535 : 0;
-    }
-}
-
-__global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, int width, int height, u_int16_t windowSize, u_int16_t offset) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x < width && y < height) {
-        
-        // finestra quadrata centrata sul pixel (x, y)
-        windowSize /= 2;
-        int startX = max(x - windowSize, 0);
-        int endX = min(x + windowSize, width);
-        int startY = max(y - windowSize, 0);
-        int endY = min(y + windowSize, height);
-
-        // Calcola la media del blocco locale
-        u_int32_t sum = 0;
-        for (u_int32_t i = startY; i < endY; i++) {
-            for (u_int32_t j = startX; j < endX; j++) {
-                sum += image[i * width + j];
-            }
-        }
-        int localMean = sum / ((endX - startX) * (endY - startY));
-        int pixel = image[y * width + x];
-
-        // Applica il thresholding adattivo
-        output[y * width + x] = (pixel > (localMean + offset)) ? 65535 : 0;
-    }
-}
-
-// Ogni thread si occupa di un pixel dell'immagine ridotta.
-__global__ void reduce_image(u_int16_t *image, u_int16_t *reduced_image, int width, int height, int reduce_factor) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    int new_width = width / reduce_factor;
-    int new_height = height / reduce_factor;
-
-    if (x < new_width && y < new_height) {
-        u_int32_t sum = 0;
-        for (int i = 0; i < reduce_factor; i++) {
-            for (int j = 0; j < reduce_factor; j++) {
-                int orig_x = x * reduce_factor + i;
-                int orig_y = y * reduce_factor + j;
-                if (orig_x >= width || orig_y >= height) {
-                    continue;
-                }
-                sum += image[orig_y * width + orig_x];
-            }
-        }
-        reduced_image[y * new_width + x] = sum / (reduce_factor * reduce_factor);
-    }
-}
-
 
 int main(int argc, char **argv) {
 
     char *filename = nullptr;
     int opt, option_index = 0;
-    int threshold = 1000;
-    int reduce_factor = 8;
-    int window_size = 255;
+    u_int16_t threshold = 1000;
+    u_int8_t reduce_factor = 8;
+    u_int16_t window_size = 255;
 
     enum ThresholdType {
         TR_SIMPLE,
-        TR_ADAPTIVE
+        TR_ADAPTIVE,
+        TR_ADAPTIVE_APPRISSIMATIVE
     };
     ThresholdType threshold_algorithm = TR_SIMPLE;
 
@@ -158,6 +72,8 @@ int main(int argc, char **argv) {
                     threshold_algorithm = TR_SIMPLE;
                 } else if (strcmp(optarg, "adaptive") == 0) {
                     threshold_algorithm = TR_ADAPTIVE;
+                } else if (strcmp(optarg, "adaptive-approssimative") == 0) {
+                    threshold_algorithm = TR_ADAPTIVE_APPRISSIMATIVE;
                 } else {
                     fprintf(stderr, "Invalid threshold algorithm, using default\n");
                 }
@@ -185,11 +101,11 @@ int main(int argc, char **argv) {
 
     // Apre il file FITS
     fitsfile *fptr = nullptr;
-    int width, height, depth;
+    long width, height, depth;
     open_fits(filename, &fptr);
     get_image_dimensions(fptr, &width, &height, &depth);
-    int totpixels = width * height * depth;
-    int npixels = width * height;
+    u_int64_t totpixels = width * height * depth;
+    u_int64_t npixels = width * height;
 
     u_int16_t *fits_data = nullptr;
     CHECK(cudaMallocManaged(&fits_data, totpixels * sizeof(u_int16_t)));
@@ -220,8 +136,6 @@ int main(int argc, char **argv) {
     to_grayscale_fits<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
     CHECK(cudaDeviceSynchronize());
 
-    reduce_image<<<grid_size_2d, block_size_2d>>>(gray_image, reduced_image, width, height, reduce_factor);
-    CHECK(cudaDeviceSynchronize());
     //save_image_fits("output_gray", reduced_image, width/reduce_factor, height/reduce_factor, 1);
 
     sleep(2);
@@ -231,6 +145,12 @@ int main(int argc, char **argv) {
             break;
         case TR_ADAPTIVE:
             adaptiveThresholdingKernel<<<grid_size_2d, block_size_2d>>>(gray_image, output_image, width, height, window_size, threshold);
+            break;
+        case TR_ADAPTIVE_APPRISSIMATIVE:
+            reduce_image<<<grid_size_2d, block_size_2d>>>(gray_image, reduced_image, width, height, reduce_factor);
+            CHECK(cudaDeviceSynchronize());
+            adaptiveThresholdingApprossimative<<<grid_size_2d, block_size_2d>>>(
+                gray_image, output_image, width, height, reduced_image, reduce_factor, window_size, threshold);
             break;
     }
     CHECK(cudaDeviceSynchronize());

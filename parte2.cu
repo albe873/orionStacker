@@ -136,9 +136,6 @@ int main(int argc, char **argv) {
     to_grayscale_fits<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
     CHECK(cudaDeviceSynchronize());
 
-    //save_image_fits("output_gray", reduced_image, width/reduce_factor, height/reduce_factor, 1);
-
-    sleep(2);
     switch (threshold_algorithm) {
         case TR_SIMPLE:
             simple_threshold<<<grid_size_1d, block_size_1d>>>(gray_image, output_image, npixels, threshold);

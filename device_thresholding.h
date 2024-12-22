@@ -108,9 +108,10 @@ __global__ void adaptiveThresholdingApprossimative(
 
         // Calcola la media del blocco locale
         u_int32_t sum = 0;
+        u_int64_t reduced_width = width / reduce_factor;
         for (u_int64_t i = startY; i < endY; i++) {
             for (u_int64_t j = startX; j < endX; j++) {
-                sum += reduced_image[i * width + j];
+                sum += reduced_image[i * reduced_width + j];
             }
         }
         u_int16_t localMean = sum / ((endX - startX) * (endY - startY));

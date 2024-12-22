@@ -123,4 +123,91 @@ __global__ void adaptiveThresholdingApprossimative(
 }
 
 
+
+// Kernel per la rilevazione delle stelle
+__global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t width, u_int64_t height, u_int16_t windowSize_star) {
+    u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
+    u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
+    u_int16_t halfWindow = windowSize_star / 2;
+
+    if (x >= width || y >= height) 
+        return;
+
+    u_int64_t idx = y * width + x;
+    u_int16_t current = input[idx];
+
+    // Camminata a spirale
+    bool is_star = true;
+    bool allBlack = true;   // una stella deve essere circondata da pixel neri
+    u_int32_t spiralSteps = (2 * halfWindow + 1) * (2 * halfWindow + 1) - 1;
+    int8_t directions[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};
+    u_int32_t stepLimit = 1, stepCount = 0;
+    u_int8_t dirIndex = 0;
+    u_int64_t sx = x, sy = y;
+
+    u_int64_t inizitial_idx = y * width + x;
+    u_int64_t current_idx;
+
+    for(int s = 1; s <= spiralSteps; s++) {
+        sx += directions[dirIndex][0];
+        sy += directions[dirIndex][1];
+        stepCount++;
+
+        // Controlla se all’interno dell’immagine
+        if(sx < 0 || sx >= width || sy < 0 || sy >= height) {
+            is_star = false; 
+            break;
+        }
+
+        // Controlla se il pixel corrente è maggiore del pixel centrale
+        // se è maggiore allora non è una stella ed esco dal ciclo
+        current_idx = sy * width + sx;
+        if (input[current_idx] > current) {
+            is_star = false;
+            break;
+        }
+        
+        // Controllo se non c'è un pixel candidato come centro con stessa luminosità
+        // se esiste, allora controllo idx, se idx è maggiore di inizial_idx allora non è una stella 
+        if (input[current_idx] == current) {
+            if (current_idx > inizitial_idx) {
+                is_star = false;
+                break;
+            }
+        }
+
+        // Controllo se il pixel corrente è nero
+        if (allBlack && input[current_idx] > 0) {
+            allBlack = false;
+        }
+
+        // Controllo se ho completato un lato della spirale
+        if(stepCount == stepLimit) {
+            stepCount = 0;
+            
+            // Cambio direzione
+            dirIndex++;
+            // Controllo se ho completato un giro della spirale, allora resetto i contatori
+            if (dirIndex % 4 == 0) {
+                dirIndex = 0;
+                // Controllo se tutti i pixel sono neri, allora finisco la ricerca della stella
+                if (allBlack) {
+                    break;
+                }
+                allBlack = true;
+            }
+
+            // Incremento il limite di passi ogni due cambi direzioni
+            if(dirIndex % 2 == 0)
+                stepLimit++;
+        }
+    }
+
+    // Se è una stella
+    if (is_star && allBlack) {
+        output[idx] = 65535;
+    }
+}
+
+
 #endif // CUDA_DEVICE_THRESHOLDING_H

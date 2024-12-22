@@ -123,6 +123,10 @@ int main(int argc, char **argv) {
     CHECK(cudaMallocManaged(&output_image, npixels * sizeof(u_int16_t)));
     CHECK(cudaMemPrefetchAsync(output_image, npixels * sizeof(u_int16_t), dev));
 
+    u_int16_t *star_map = nullptr;
+    CHECK(cudaMallocManaged(&star_map, npixels * sizeof(u_int16_t)));
+    CHECK(cudaMemPrefetchAsync(star_map, npixels * sizeof(u_int16_t), dev));
+
     get_fits_data(fptr, totpixels, fits_data);
     dim3 block_size_1d(256);
     dim3 grid_size_1d((npixels / 2 + block_size_1d.x - 1) / block_size_1d.x);
@@ -153,4 +157,10 @@ int main(int argc, char **argv) {
     CHECK(cudaDeviceSynchronize());
 
     save_image_fits("output_gray", output_image, width, height, 1);
+
+    detect_stars<<<grid_size_2d, block_size_2d>>>(output_image, star_map, width, height, 100);
+    CHECK(cudaDeviceSynchronize());
+
+    save_image_fits("output_star", star_map, width, height, 1);
+
 }

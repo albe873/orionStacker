@@ -119,13 +119,13 @@ int main(int argc, char **argv) {
     CHECK(cudaMallocManaged(&reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t)));
     CHECK(cudaMemPrefetchAsync(reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t), dev));
 
-    u_int16_t *output_image = nullptr;
-    CHECK(cudaMallocManaged(&output_image, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(output_image, npixels * sizeof(u_int16_t), dev));
+    u_int16_t *threshold_image = nullptr;
+    CHECK(cudaMallocManaged(&threshold_image, npixels * sizeof(u_int16_t)));
+    CHECK(cudaMemPrefetchAsync(threshold_image, npixels * sizeof(u_int16_t), dev));
 
-    u_int16_t *star_map = nullptr;
-    CHECK(cudaMallocManaged(&star_map, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(star_map, npixels * sizeof(u_int16_t), dev));
+    //u_int16_t *star_map = nullptr;
+    //CHECK(cudaMallocManaged(&star_map, npixels * sizeof(u_int16_t)));
+    //CHECK(cudaMemPrefetchAsync(star_map, npixels * sizeof(u_int16_t), dev));
 
     get_fits_data(fptr, totpixels, fits_data);
     dim3 block_size_1d(256);
@@ -142,25 +142,25 @@ int main(int argc, char **argv) {
 
     switch (threshold_algorithm) {
         case TR_SIMPLE:
-            simple_threshold<<<grid_size_1d, block_size_1d>>>(gray_image, output_image, npixels, threshold);
+            simple_threshold<<<grid_size_1d, block_size_1d>>>(gray_image, threshold_image, npixels, threshold);
             break;
         case TR_ADAPTIVE:
-            adaptiveThresholdingKernel<<<grid_size_2d, block_size_2d>>>(gray_image, output_image, width, height, window_size, threshold);
+            adaptiveThresholdingKernel<<<grid_size_2d, block_size_2d>>>(gray_image, threshold_image, width, height, window_size, threshold);
             break;
         case TR_ADAPTIVE_APPRISSIMATIVE:
             reduce_image<<<grid_size_2d, block_size_2d>>>(gray_image, reduced_image, width, height, reduce_factor);
             CHECK(cudaDeviceSynchronize());
             adaptiveThresholdingApprossimative<<<grid_size_2d, block_size_2d>>>(
-                gray_image, output_image, width, height, reduced_image, reduce_factor, window_size, threshold);
+                gray_image, threshold_image, width, height, reduced_image, reduce_factor, window_size, threshold);
             break;
     }
     CHECK(cudaDeviceSynchronize());
 
-    save_image_fits("output_gray", output_image, width, height, 1);
+    save_image_fits("output_gray", threshold_image, width, height, 1);
 
-    detect_stars<<<grid_size_2d, block_size_2d>>>(output_image, star_map, width, height, 100);
+    detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, 100);
     CHECK(cudaDeviceSynchronize());
 
-    save_image_fits("output_star", star_map, width, height, 1);
+    save_image_fits("output_star", fits_data, width, height, 3);
 
 }

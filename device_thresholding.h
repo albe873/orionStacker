@@ -130,7 +130,7 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
     u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
     u_int16_t halfWindow = windowSize_star / 2;
 
-    if (x >= width || y >= height) 
+    if (x >= width || y >= height)
         return;
 
     u_int64_t idx = y * width + x;
@@ -138,17 +138,17 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
 
     // Camminata a spirale
     bool is_star = true;
-    bool allBlack = true;   // una stella deve essere circondata da pixel neri
-    u_int32_t spiralSteps = (2 * halfWindow + 1) * (2 * halfWindow + 1) - 1;
+    bool allBlack = true;   // una stella deve essere contenuta in un quadrato di tutti pixel neri
+    u_int32_t maxSpiralSteps = (2 * halfWindow + 1) * (2 * halfWindow + 1) - 1;
     int8_t directions[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};
-    u_int32_t stepLimit = 1, stepCount = 0;
     u_int8_t dirIndex = 0;
-    u_int64_t sx = x, sy = y;
+    u_int32_t stepLimit = 1, stepCount = 0;
+    u_int64_t sx = x, sy = y; // datogliere
 
     u_int64_t inizitial_idx = y * width + x;
     u_int64_t current_idx;
 
-    for(int s = 1; s <= spiralSteps; s++) {
+    for(int s = 1; s <= maxSpiralSteps; s++) {
         sx += directions[dirIndex][0];
         sy += directions[dirIndex][1];
         stepCount++;
@@ -199,13 +199,38 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
 
             // Incremento il limite di passi ogni due cambi direzioni
             if(dirIndex % 2 == 0)
-                stepLimit++;
+                stepLimit++; // equivale al doppio dei "giri" che ho fatto
         }
     }
 
     // Se è una stella
-    if (is_star && allBlack) {
-        output[idx] = 65535;
+    if (is_star && allBlack && (stepLimit/2) > 2) {
+        //output[idx] = 65535;
+        // un altro giro per disegnare il quadrato
+
+        // (sx, sy) sono le coordinate dell'angolo in basso a sinistra del quadrato
+
+        // disegno il lato inferiore
+        for (int i = sx; i < sx + stepLimit; i++) {
+            current_idx = sy * width + i;
+            output[current_idx] = 65535;
+        }
+
+        // disegno il lato destro
+        for (int j = sy; j < sy + stepLimit; j++) {
+            current_idx = j * width + sx + stepLimit - 1;
+            output[current_idx] = 65535;
+        }
+
+        // disegno il lato superiore
+        for (int i = sx; i < sx + stepLimit; i++) {
+            output[(sy + stepLimit - 1) * width + i] = 65535;
+        }
+
+        // disegno il lato sinistro
+        for (int j = sy; j < sy + stepLimit; j++) {
+            output[j * width + sx] = 65535;
+        }
     }
 }
 

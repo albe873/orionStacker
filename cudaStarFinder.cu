@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
     enum ThresholdType {
         TR_SIMPLE,
         TR_ADAPTIVE,
-        TR_ADAPTIVE_APPRISSIMATIVE
+        TR_FAST_ADAPTIVE
     };
     ThresholdType threshold_algorithm = TR_SIMPLE;
 
@@ -80,8 +80,8 @@ int main(int argc, char **argv) {
                     threshold_algorithm = TR_SIMPLE;
                 } else if (strcmp(optarg, "adaptive") == 0) {
                     threshold_algorithm = TR_ADAPTIVE;
-                } else if (strcmp(optarg, "adaptive-approssimative") == 0) {
-                    threshold_algorithm = TR_ADAPTIVE_APPRISSIMATIVE;
+                } else if (strcmp(optarg, "fast-adaptive") == 0) {
+                    threshold_algorithm = TR_FAST_ADAPTIVE;
                 } else {
                     fprintf(stderr, "Invalid threshold algorithm, using default\n");
                 }
@@ -127,16 +127,14 @@ int main(int argc, char **argv) {
     CHECK(cudaMemPrefetchAsync(gray_image, npixels * sizeof(u_int16_t), dev));
 
     u_int16_t *reduced_image = nullptr;
-    CHECK(cudaMallocManaged(&reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t), dev));
+    if (threshold_algorithm == TR_FAST_ADAPTIVE) {
+        CHECK(cudaMallocManaged(&reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t)));
+        CHECK(cudaMemPrefetchAsync(reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t), dev));
+    }
 
     u_int16_t *threshold_image = nullptr;
     CHECK(cudaMallocManaged(&threshold_image, npixels * sizeof(u_int16_t)));
     CHECK(cudaMemPrefetchAsync(threshold_image, npixels * sizeof(u_int16_t), dev));
-
-    //u_int16_t *star_map = nullptr;
-    //CHECK(cudaMallocManaged(&star_map, npixels * sizeof(u_int16_t)));
-    //CHECK(cudaMemPrefetchAsync(star_map, npixels * sizeof(u_int16_t), dev));
 
     get_fits_data(fptr, totpixels, fits_data);
     dim3 block_size_1d(256);
@@ -150,7 +148,6 @@ int main(int argc, char **argv) {
     double t_start, t_elapsed;
     t_start = cpuSecond();
 
-    // se depth == 1, allora bisogna applicare il filtro di bayer???
     to_grayscale_fits<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
     CHECK(cudaDeviceSynchronize());
 
@@ -161,7 +158,7 @@ int main(int argc, char **argv) {
         case TR_ADAPTIVE:
             adaptiveThresholdingKernel<<<grid_size_2d, block_size_2d>>>(gray_image, threshold_image, width, height, window_size, threshold);
             break;
-        case TR_ADAPTIVE_APPRISSIMATIVE:
+        case TR_FAST_ADAPTIVE:
             reduce_image<<<grid_size_2d, block_size_2d>>>(gray_image, reduced_image, width, height, reduce_factor);
             CHECK(cudaDeviceSynchronize());
             adaptiveThresholdingApprossimative<<<grid_size_2d, block_size_2d>>>(

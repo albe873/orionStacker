@@ -167,5 +167,4 @@ int main(int argc, char **argv) {
     CHECK(cudaDeviceSynchronize());
 
     save_image_fits("output_star", fits_data, width, height, 3);
-
 }

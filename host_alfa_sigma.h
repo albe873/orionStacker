@@ -33,7 +33,6 @@ void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numIma
     u_int16_t immagini;
     for (int i = 0; i < npixels; i++) {
         immagini = 0;
-        //std[i] = 0.0f;    // inizializzato a 0.0f, più veloce impostare tutto a zero con cudaMemset
         for (int j = 0; j < numImages; j++) {
             if (image[j][i] > 0) {
                 immagini++;

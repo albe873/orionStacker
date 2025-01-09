@@ -32,8 +32,8 @@ __global__ void simple_threshold(u_int16_t *image, u_int16_t *output, u_int64_t 
         u_int16_t val1 = image[idx1];
         u_int16_t val2 = image[idx2];
 
-        output[idx1] = val1 > threshold ? 65535 : 0;
-        output[idx2] = val2 > threshold ? 65535 : 0;
+        output[idx1] = val1 > threshold ? val1 : 0;
+        output[idx2] = val2 > threshold ? val2 : 0;
     }
 }
 
@@ -61,7 +61,7 @@ __global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, 
         u_int16_t pixel = image[y * width + x];
 
         // Applica il thresholding adattivo
-        output[y * width + x] = (pixel > (localMean + offset)) ? 65535 : 0;
+        output[y * width + x] = (pixel > (localMean + offset)) ? pixel : 0;
     }
 }
 
@@ -118,7 +118,7 @@ __global__ void adaptiveThresholdingApprossimative(
         u_int16_t pixel = image[y * width + x];
 
         // Applica il thresholding adattivo
-        output[y * width + x] = (pixel > (localMean + offset)) ? 65535 : 0;
+        output[y * width + x] = (pixel > (localMean + offset)) ? pixel : 0;
     }
 }
 
@@ -128,7 +128,6 @@ __global__ void adaptiveThresholdingApprossimative(
 __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t width, u_int64_t height, u_int16_t windowSize_star) {
     u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
     u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
-    u_int16_t halfWindow = windowSize_star / 2;
 
     if (x >= width || y >= height)
         return;
@@ -139,29 +138,26 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
     // Camminata a spirale
     bool is_star = true;
     bool allBlack = true;   // una stella deve essere contenuta in un quadrato di tutti pixel neri
-    u_int32_t maxSpiralSteps = (2 * halfWindow + 1) * (2 * halfWindow + 1) - 1;
+
     int8_t directions[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};
     u_int8_t dirIndex = 0;
     u_int32_t stepLimit = 1, stepCount = 0;
-    u_int64_t sx = x, sy = y; // datogliere
-
-    u_int64_t inizitial_idx = y * width + x;
     u_int64_t current_idx;
 
-    for(int s = 1; s <= maxSpiralSteps; s++) {
-        sx += directions[dirIndex][0];
-        sy += directions[dirIndex][1];
+    while(stepLimit < windowSize_star) {
+        x += directions[dirIndex][0];
+        y += directions[dirIndex][1];
         stepCount++;
 
         // Controlla se all’interno dell’immagine
-        if(sx < 0 || sx >= width || sy < 0 || sy >= height) {
+        if(x < 0 || x >= width || y < 0 || y >= height) {
             is_star = false; 
             break;
         }
 
         // Controlla se il pixel corrente è maggiore del pixel centrale
         // se è maggiore allora non è una stella ed esco dal ciclo
-        current_idx = sy * width + sx;
+        current_idx = y * width + x;
         if (input[current_idx] > current) {
             is_star = false;
             break;
@@ -170,7 +166,7 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
         // Controllo se non c'è un pixel candidato come centro con stessa luminosità
         // se esiste, allora controllo idx, se idx è maggiore di inizial_idx allora non è una stella 
         if (input[current_idx] == current) {
-            if (current_idx > inizitial_idx) {
+            if (current_idx > idx) {
                 is_star = false;
                 break;
             }
@@ -204,32 +200,30 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
     }
 
     // Se è una stella
-    if (is_star && allBlack && (stepLimit/2) > 2) {
+    if (is_star && allBlack && (stepLimit/2) > 2 && stepLimit < windowSize_star) {
         //output[idx] = 65535;
         // un altro giro per disegnare il quadrato
 
         // (sx, sy) sono le coordinate dell'angolo in basso a sinistra del quadrato
 
-        // disegno il lato inferiore
-        for (int i = sx; i < sx + stepLimit; i++) {
-            current_idx = sy * width + i;
+        for (int i = x; i < x + stepLimit; i++) {
+            // disegno il lato inferiore
+            current_idx = y * width + i;
+            output[current_idx] = 65535;
+
+            // disegno il lato superiore
+            current_idx = (y + stepLimit - 1) * width + i;
             output[current_idx] = 65535;
         }
 
-        // disegno il lato destro
-        for (int j = sy; j < sy + stepLimit; j++) {
-            current_idx = j * width + sx + stepLimit - 1;
+        for (int j = y; j < y + stepLimit; j++) {
+            // disegno il lato destro
+            current_idx = j * width + x + stepLimit - 1;
             output[current_idx] = 65535;
-        }
 
-        // disegno il lato superiore
-        for (int i = sx; i < sx + stepLimit; i++) {
-            output[(sy + stepLimit - 1) * width + i] = 65535;
-        }
-
-        // disegno il lato sinistro
-        for (int j = sy; j < sy + stepLimit; j++) {
-            output[j * width + sx] = 65535;
+            // disegno il lato sinistro
+            current_idx = j * width + x;
+            output[current_idx] = 65535;
         }
     }
 }

@@ -39,6 +39,7 @@ int main(int argc, char **argv) {
     u_int16_t threshold = 1000;
     u_int8_t reduce_factor = 8;
     u_int16_t window_size = 255;
+    u_int16_t max_star_size = 75;
 
     enum ThresholdType {
         TR_SIMPLE,
@@ -53,10 +54,11 @@ int main(int argc, char **argv) {
         {"reduce-factor", optional_argument, 0, 'r'},
         {"threshold-algorith", optional_argument, 0, 'a'},
         {"window-size", optional_argument, 0, 'w'},
+        {"max-star-size", optional_argument, 0, 'm'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:m:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'f':
                 filename = optarg;
@@ -80,6 +82,9 @@ int main(int argc, char **argv) {
                 break;
             case 'w':
                 window_size = atoi(optarg);
+                break;
+            case 'm':
+                max_star_size = atoi(optarg);
                 break;
             default:
                 fprintf(stderr, "Usage: %s --input-file <image.fits>\n", argv[0]);
@@ -158,7 +163,7 @@ int main(int argc, char **argv) {
 
     save_image_fits("output_gray", threshold_image, width, height, 1);
 
-    detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, 100);
+    detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
     CHECK(cudaDeviceSynchronize());
 
     save_image_fits("output_star", fits_data, width, height, 3);

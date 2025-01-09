@@ -24,7 +24,7 @@ void open_fits(char *file_path, fitsfile **fptr) {
     }
 }
 
-void get_image_dimensions(fitsfile *fptr, long *width, long *height, long *depth) {
+void get_image_dimensions(fitsfile *fptr, long *width, long *height, long *n_chan) {
     int status = 0;
     int naxis;
     long naxes[3] = {1, 1, 1};
@@ -33,13 +33,26 @@ void get_image_dimensions(fitsfile *fptr, long *width, long *height, long *depth
         fits_close_file(fptr, &status);
         exit(1);
     }
+    if (naxis < 2 || naxis > 3) {
+        fprintf(stderr, "Only 2D images are supported\n");
+        fits_close_file(fptr, &status);
+        exit(1);
+    }
+    if (naxes[0] < 1 || naxes[1] < 1) {
+        fprintf(stderr, "Invalid image dimensions\n");
+        fits_close_file(fptr, &status);
+        exit(1);
+    }
     *width = naxes[0];
     *height = naxes[1];
-    if (naxis == 2) {
-        *depth = 1;
-        return;
+    if (naxis == 3) {
+        if (naxes[2] < 1 || naxes[2] > 3) {
+            fprintf(stderr, "Invalid number of channels\n");
+            fits_close_file(fptr, &status);
+            exit(1);
+        }
+        *n_chan = naxes[2];
     }
-    *depth = naxes[2];
 }
 
 
@@ -74,7 +87,7 @@ void print_fits_metadata(fitsfile *fptr) {
     }
 }
 
-void save_image_fits(char const *output_dir_path, u_int16_t *image_data, int width, int height, int depth) {
+void save_image_fits(char const *output_dir_path, u_int16_t *image_data, long width, long height, long n_chan) {
     fitsfile *fptr;
     int status = 0;
 
@@ -113,14 +126,14 @@ void save_image_fits(char const *output_dir_path, u_int16_t *image_data, int wid
         }
     }
 
-    if (depth == 1) {
+    if (n_chan == 1) {
         long naxes[2] = {width, height};
         if (fits_create_img(fptr, USHORT_IMG, 2, naxes, &status)) {
             fits_report_error(stderr, status);
             exit(1);
         }
     } else {
-        long naxes[3] = {width, height, depth};
+        long naxes[3] = {width, height, n_chan};
         if (fits_create_img(fptr, USHORT_IMG, 3, naxes, &status)) {
             fits_report_error(stderr, status);
             exit(1);
@@ -128,7 +141,7 @@ void save_image_fits(char const *output_dir_path, u_int16_t *image_data, int wid
     }
 
     // Write image data
-    if (fits_write_img(fptr, TUSHORT, 1, width * height * depth, image_data, &status)) {
+    if (fits_write_img(fptr, TUSHORT, 1, width * height * n_chan, image_data, &status)) {
         fits_report_error(stderr, status);
         exit(1);
     }

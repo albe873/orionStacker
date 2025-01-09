@@ -145,6 +145,11 @@ int main(int argc, char **argv) {
     long width, height, depth;
     open_fits(filename, &fptr);
     get_image_dimensions(fptr, &width, &height, &depth);
+
+    if (width * height * depth == 0) {
+        fprintf(stderr, "Invalid image dimensions\n");
+        return 1;
+    }
     u_int64_t totpixels = width * height * depth;
     u_int64_t npixels = width * height;
 

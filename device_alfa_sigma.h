@@ -22,7 +22,7 @@ __device__ inline void computeMean2(u_int16_t **image, u_int16_t *mean, u_int64_
     mean[idx2] = (count2 > 0) ? acc2 / count2 : 0;
 }
 
-__device__ inline void computePartialMean2(u_int16_t **image, u_int16_t* mean1, u_int16_t* mean2, u_int32_t idx1, u_int32_t idx2, u_int16_t numImages) {
+__device__ inline void computePartialMean2(u_int16_t **image, u_int16_t* mean1, u_int16_t* mean2, u_int64_t idx1, u_int64_t idx2, u_int16_t numImages) {
     u_int32_t acc1 = 0, acc2 = 0;
     u_int16_t count1 = 0, count2 = 0;
     for (int i = 0; i < numImages; i++) {

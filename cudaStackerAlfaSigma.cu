@@ -48,6 +48,10 @@ int main(int argc, char **argv) {
     const char *out_dir = nullptr;
 
     int opt, option_index = 0;
+    long num;
+    float numf;
+    char *end;
+
     float kappa = 3.0;
     u_int16_t sigma = 5;
 
@@ -68,10 +72,24 @@ int main(int argc, char **argv) {
                 out_dir = optarg;
                 break;
             case 'k':
-                kappa = atoi(optarg);
+                numf = strtof(optarg, &end);
+                if (end == optarg) {
+                    fprintf(stderr, "Invalid argument for kappa, using default\n");
+                } else if (numf < 0 || numf > 100) {
+                    fprintf(stderr, "Invalid argument for kappa, using default\n");
+                } else {
+                    kappa = numf;
+                }
                 break;
-            case 's': 
-                sigma = atof(optarg);
+            case 's':
+                num = strtol(optarg, &end, 10);
+                if (end == optarg) {
+                    fprintf(stderr, "Invalid argument for sigma, using default\n");
+                } else if (num < 0 || num > 65535) {
+                    fprintf(stderr, "Invalid argument for sigma, using default\n");
+                } else {
+                    sigma = num;
+                }
                 break;
             default:
                 fprintf(stderr, "Usage: %s --input-directory <input/dir> --output-directory </output/dir>\n", argv[0]);
@@ -103,7 +121,7 @@ int main(int argc, char **argv) {
     // Scansione della cartella
 
     fitsfile *fptr = nullptr;
-    long width, height, depth, new_width, new_height, new_depth;
+    long width, height, n_chan, new_width, new_height, new_n_chan;
     int status;
     u_int16_t image_count = 0, image_num = 0;
     dim3 block_size(512), grid_size;
@@ -121,13 +139,13 @@ int main(int argc, char **argv) {
 
                 if (image_num == 0) {
                     print_fits_metadata(fptr);
-                    get_image_dimensions(fptr, &width, &height, &depth);
-                    npixels = width * height * depth;
+                    get_image_dimensions(fptr, &width, &height, &n_chan);
+                    npixels = width * height * n_chan;
                     grid_size = (npixels / 2 + block_size.x - 1) / block_size.x;
                 }
                 else {
-                    get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
-                    if (new_width != width || new_height != height || new_depth != depth) {
+                    get_image_dimensions(fptr, &new_width, &new_height, &new_n_chan);
+                    if (new_width != width || new_height != height || new_n_chan != n_chan) {
                         fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
                         fits_close_file(fptr, &status);
                         continue;
@@ -170,8 +188,8 @@ int main(int argc, char **argv) {
                 printf("Opening file: %s\n", file_path);
                 open_fits(file_path, &fptr);
 
-                get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
-                if (new_width != width || new_height != height || new_depth != depth) {
+                get_image_dimensions(fptr, &new_width, &new_height, &new_n_chan);
+                if (new_width != width || new_height != height || new_n_chan != n_chan) {
                     fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
                     fits_close_file(fptr, &status);
                     continue;
@@ -200,7 +218,7 @@ int main(int argc, char **argv) {
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
     
-    save_image_fits(out_dir, mean, width, height, depth);
+    save_image_fits(out_dir, mean, width, height, n_chan);
 
 
     // free memory

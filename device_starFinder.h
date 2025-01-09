@@ -2,6 +2,7 @@
 #define CUDA_DEVICE_THRESHOLDING_H
 
 // fits data is in planar format
+// calculating two pixels at a time to improve cache hit rate
 __global__ void to_grayscale_fits(u_int16_t *image, u_int16_t *gray_image, u_int64_t npixels) {
     u_int64_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
     idx1 *= 2;
@@ -22,7 +23,7 @@ __global__ void to_grayscale_fits(u_int16_t *image, u_int16_t *gray_image, u_int
     }
 }
 
-
+// calculating two pixels at a time to improve cache hit rate
 __global__ void simple_threshold(u_int16_t *image, u_int16_t *output, u_int64_t npixels, u_int16_t threshold) {
     u_int64_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
     idx1 *= 2;
@@ -139,7 +140,7 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
 
     // Camminata a spirale
     bool is_star = true;
-    bool allBlack = true;   // una stella deve essere contenuta in un quadrato di tutti pixel neri
+    bool all_black = true;   // una stella deve essere contenuta in un quadrato di tutti pixel neri
 
     int8_t directions[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};
     u_int8_t dirIndex = 0;
@@ -175,8 +176,8 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
         }
 
         // Controllo se il pixel corrente è nero
-        if (allBlack && input[current_idx] > 0) {
-            allBlack = false;
+        if (all_black && input[current_idx] > 0) {
+            all_black = false;
         }
 
         // Controllo se ho completato un lato della spirale
@@ -189,10 +190,10 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
             if (dirIndex % 4 == 0) {
                 dirIndex = 0;
                 // Controllo se tutti i pixel sono neri, allora finisco la ricerca della stella
-                if (allBlack) {
+                if (all_black) {
                     break;
                 }
-                allBlack = true;
+                all_black = true;
             }
 
             // Incremento il limite di passi ogni due cambi direzioni
@@ -202,7 +203,7 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
     }
 
     // Se è una stella, disegno il quadrato
-    if (is_star && allBlack && (stepLimit/2) > 2 && stepLimit < windowSize_star) {
+    if (is_star && all_black && (stepLimit/2) > 2 && stepLimit < windowSize_star) {
         // (sx, sy) sono le coordinate dell'angolo in basso a sinistra del quadrato
 
         for (int i = x; i < x + stepLimit; i++) {

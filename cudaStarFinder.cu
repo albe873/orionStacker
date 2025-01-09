@@ -42,6 +42,8 @@ int main(int argc, char **argv) {
 
     char *filename = nullptr;
     int opt, option_index = 0;
+    long num;
+    char *end;
     u_int16_t threshold = 1000;
     u_int8_t reduce_factor = 8;
     u_int16_t window_size = 255;
@@ -70,10 +72,24 @@ int main(int argc, char **argv) {
                 filename = optarg;
                 break;
             case 't':
-                threshold = atoi(optarg);
+                num = strtol(optarg, &end, 10);
+                if (end == optarg) {
+                    fprintf(stderr, "Cannot convert threshold value, using default\n");
+                } else if (num < 0 || num > 65535) {
+                    fprintf(stderr, "Invalid threshold value, using default\n");
+                } else {
+                    threshold = num;
+                }
                 break;
             case 'r':
-                reduce_factor = atoi(optarg);
+                num = strtol(optarg, &end, 10);
+                if (end == optarg) {
+                    fprintf(stderr, "Cannot convert reduce factor, using default\n");
+                } else if (num < 1 || num > 16) {
+                    fprintf(stderr, "Invalid reduce factor, using default\n");
+                } else {
+                    reduce_factor = num;
+                }
                 break;
             case 'a':
                 if (strcmp(optarg, "simple") == 0) {
@@ -87,10 +103,24 @@ int main(int argc, char **argv) {
                 }
                 break;
             case 'w':
-                window_size = atoi(optarg);
+                num = strtol(optarg, &end, 10);
+                if (end == optarg) {
+                    fprintf(stderr, "Cannot convert window size, using default\n");
+                } else if (num < 1 || num > 255) {
+                    fprintf(stderr, "Invalid window size, using default\n");
+                } else {
+                    window_size = num;
+                }
                 break;
             case 'm':
-                max_star_size = atoi(optarg);
+                num = strtol(optarg, &end, 10);
+                if (end == optarg) {
+                    fprintf(stderr, "Cannot convert max star size, using default\n");
+                } else if (num < 1 || num > 255) {
+                    fprintf(stderr, "Invalid max star size, using default\n");
+                } else {
+                    max_star_size = num;
+                }
                 break;
             default:
                 fprintf(stderr, "Usage: %s --input-file <image.fits>\n", argv[0]);

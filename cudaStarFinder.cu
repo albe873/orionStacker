@@ -9,16 +9,16 @@
 /*  --- AMD HIPify tool & HIPCC compiler ---
 
 --  to generate hipified code, use the following command
-hipify-clang parte2.cu --cuda-path=/opt/cuda
+hipify-clang cudaStarFinder.cu --cuda-path=/opt/cuda
 
 --  to compile the hipified code, use the following command
-hipcc parte2.cu.hip  -o parte2 -lcfitsio -O3 -Wall
+hipcc cudaStarFinder.cu.hip  -o cudaStarFinder -lcfitsio -O3 -Wall
 */
 
 /*  --- NVCC compiler ---
 
 --  to compile for cuda, use the following command
-nvcc parte2.cu -o parte2 -lcfitsio -O3
+nvcc cudaStarFinder.cu -o cudaStarFinder -lcfitsio -O3
 */
 
 

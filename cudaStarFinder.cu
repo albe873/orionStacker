@@ -1,6 +1,6 @@
 #include "cuda_runtime.h"
 #include "fits_api.h"
-#include "device_thresholding.h"
+#include "device_starFinder.h"
 
 #include <stdio.h>
 #include <getopt.h>
@@ -29,6 +29,12 @@ inline void cuda_check(cudaError_t error_code, const char *file, int line) {
         fflush(stderr);
         exit(error_code);
     }
+}
+
+double cpuSecond() {
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    return ((double)ts.tv_sec + (double)ts.tv_nsec * 1.e-9);
 }
 
 
@@ -141,6 +147,9 @@ int main(int argc, char **argv) {
                         (height + block_size_2d.y - 1) / block_size_2d.y
                     );
 
+    double t_start, t_elapsed;
+    t_start = cpuSecond();
+
     // se depth == 1, allora bisogna applicare il filtro di bayer???
     to_grayscale_fits<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
     CHECK(cudaDeviceSynchronize());
@@ -161,10 +170,12 @@ int main(int argc, char **argv) {
     }
     CHECK(cudaDeviceSynchronize());
 
-    save_image_fits("output_gray", threshold_image, width, height, 1);
-
     detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
     CHECK(cudaDeviceSynchronize());
 
+    t_elapsed = cpuSecond() - t_start;
+    printf("Elapsed time: %f\n", t_elapsed);
+
+    save_image_fits("output_gray", threshold_image, width, height, 1);
     save_image_fits("output_star", fits_data, width, height, 3);
 }

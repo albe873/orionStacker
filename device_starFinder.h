@@ -51,7 +51,7 @@ __global__ void adaptiveThresholdingKernel(u_int16_t *image, u_int16_t *output, 
         u_int64_t endY = min(y + windowSize, height);
 
         // Calcola la media del blocco locale
-        u_int32_t sum = 0;
+        u_int64_t sum = 0; // max teorical window size is: sqrt(2^64 / 2^16) = sqrt(2^48) = *2^24* > 2^16)
         for (u_int64_t i = startY; i < endY; i++) {
             for (u_int64_t j = startX; j < endX; j++) {
                 sum += image[i * width + j];
@@ -74,18 +74,20 @@ __global__ void reduce_image(u_int16_t *image, u_int16_t *reduced_image, u_int64
     u_int64_t new_height = height / reduce_factor;
 
     if (x < new_width && y < new_height) {
-        u_int32_t sum = 0;
-        for (u_int32_t i = 0; i < reduce_factor; i++) {
-            for (u_int32_t j = 0; j < reduce_factor; j++) {
-                u_int32_t orig_x = x * reduce_factor + i;
-                u_int32_t orig_y = y * reduce_factor + j;
+        u_int64_t sum = 0;
+        u_int32_t out_of_range = 0;
+        for (u_int16_t i = 0; i < reduce_factor; i++) {
+            for (u_int16_t j = 0; j < reduce_factor; j++) {
+                u_int64_t orig_x = x * reduce_factor + i;
+                u_int64_t orig_y = y * reduce_factor + j;
                 if (orig_x >= width || orig_y >= height) {
+                    out_of_range++;
                     continue;
                 }
                 sum += image[orig_y * width + orig_x];
             }
         }
-        reduced_image[y * new_width + x] = sum / (reduce_factor * reduce_factor);
+        reduced_image[y * new_width + x] = sum / (reduce_factor * reduce_factor - out_of_range);
     }
 }
 
@@ -99,14 +101,14 @@ __global__ void adaptiveThresholdingApprossimative(
 
     if (x < width && y < height) {
         
-        // finestra quadrata centrata sul pixel (x, y)
+        // square windows centered in (x, y)
         windowSize /= 2;
         u_int64_t startX = max(x - windowSize, 0L) / reduce_factor;
         u_int64_t endX = min(x + windowSize, width) / reduce_factor;
         u_int64_t startY = max(y - windowSize, 0L) / reduce_factor;
         u_int64_t endY = min(y + windowSize, height) / reduce_factor;
 
-        // Calcola la media del blocco locale
+        // local block mean
         u_int32_t sum = 0;
         u_int64_t reduced_width = width / reduce_factor;
         for (u_int64_t i = startY; i < endY; i++) {
@@ -117,7 +119,7 @@ __global__ void adaptiveThresholdingApprossimative(
         u_int16_t localMean = sum / ((endX - startX) * (endY - startY));
         u_int16_t pixel = image[y * width + x];
 
-        // Applica il thresholding adattivo
+        // apply adaptive thresholding
         output[y * width + x] = (pixel > (localMean + offset)) ? pixel : 0;
     }
 }
@@ -199,11 +201,8 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
         }
     }
 
-    // Se è una stella
+    // Se è una stella, disegno il quadrato
     if (is_star && allBlack && (stepLimit/2) > 2 && stepLimit < windowSize_star) {
-        //output[idx] = 65535;
-        // un altro giro per disegnare il quadrato
-
         // (sx, sy) sono le coordinate dell'angolo in basso a sinistra del quadrato
 
         for (int i = x; i < x + stepLimit; i++) {

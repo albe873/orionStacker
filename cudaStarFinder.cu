@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
     long num;
     char *end;
     u_int16_t threshold = 1000;
-    u_int8_t reduce_factor = 8;
+    u_int16_t reduce_factor = 8;
     u_int16_t window_size = 255;
     u_int16_t max_star_size = 75;
 
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
                 num = strtol(optarg, &end, 10);
                 if (end == optarg) {
                     fprintf(stderr, "Cannot convert reduce factor, using default\n");
-                } else if (num < 1 || num > 16) {
+                } else if (num < 1 || num > 65535) {
                     fprintf(stderr, "Invalid reduce factor, using default\n");
                 } else {
                     reduce_factor = num;
@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
                 num = strtol(optarg, &end, 10);
                 if (end == optarg) {
                     fprintf(stderr, "Cannot convert window size, using default\n");
-                } else if (num < 1 || num > 255) {
+                } else if (num < 1 || num > 65535) {
                     fprintf(stderr, "Invalid window size, using default\n");
                 } else {
                     window_size = num;
@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
                 num = strtol(optarg, &end, 10);
                 if (end == optarg) {
                     fprintf(stderr, "Cannot convert max star size, using default\n");
-                } else if (num < 1 || num > 255) {
+                } else if (num < 1 || num > 65535) {
                     fprintf(stderr, "Invalid max star size, using default\n");
                 } else {
                     max_star_size = num;

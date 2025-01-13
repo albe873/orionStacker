@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
     enum ThresholdType {
         TR_SIMPLE,
         TR_ADAPTIVE,
-        TR_ADAPTIVE_APPRISSIMATIVE
+        TR_FAST_ADAPTIVE
     };
     int threshold_algorithm = TR_SIMPLE;
 
@@ -59,8 +59,8 @@ int main(int argc, char **argv) {
                     threshold_algorithm = TR_SIMPLE;
                 } else if (strcmp(optarg, "adaptive") == 0) {
                     threshold_algorithm = TR_ADAPTIVE;
-                } else if (strcmp(optarg, "adaptive-approssimative") == 0) {
-                    threshold_algorithm = TR_ADAPTIVE_APPRISSIMATIVE;
+                } else if (strcmp(optarg, "fast-adaptive") == 0) {
+                    threshold_algorithm = TR_FAST_ADAPTIVE;
                 } else {
                     fprintf(stderr, "Invalid threshold algorithm, using default\n");
                 }
@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
         case TR_ADAPTIVE:
             adaptiveThresholding_cpu(gray_image, threshold_image, width, height, window_size, threshold);
             break;
-        case TR_ADAPTIVE_APPRISSIMATIVE:
+        case TR_FAST_ADAPTIVE:
             reduce_image_cpu(gray_image, reduced_image, width, height, reduce_factor);
             adaptiveThresholdingApprossimative_cpu(gray_image, threshold_image, width, height, 
                                                  reduced_image, reduce_factor, window_size, threshold);

@@ -44,6 +44,8 @@ __device__ inline void computePartialMean2(u_int16_t **image, u_int16_t* mean1, 
 // calcolo deviazione standard
 __device__ inline void computeStdDev2(float *std1, float *std2, u_int16_t mean1, u_int16_t mean2, u_int16_t **image, u_int64_t idx1, u_int64_t idx2, u_int16_t numImages) {
     u_int16_t count1 = 0, count2 = 0;
+    *std1 = 0.0f;
+    *std2 = 0.0f;
     for (int i = 0; i < numImages; i++) {
         u_int16_t val1 = image[i][idx1];
         u_int16_t val2 = image[i][idx2];
@@ -90,8 +92,6 @@ __global__ void compute_alfa_sigma2(u_int16_t **image, u_int16_t *mean, u_int16_
     
     if (idx2 < npixels) {
         for (u_int16_t i = 0; i < s; i++) {
-            std1 = 0.0f;
-            std2 = 0.0f;
             computePartialMean2(image, &part_mean1, &part_mean2, idx1, idx2, numImages);
             computeStdDev2(&std1, &std2, part_mean1, part_mean2, image, idx1, idx2, numImages);
             filterPixels2(part_mean1, std1, part_mean2, std2, image, idx1, idx2, k, numImages);

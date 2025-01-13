@@ -56,8 +56,8 @@ __device__ inline void computeStdDev2(float *std1, float *std2, u_int16_t mean1,
             *std2 += ((float)val2 - mean2) * ((float)val2 - mean2);
         }
     }
-    *std1 = (count1 > 1) ? sqrtf(*std1 / (count1 - 1)) : 0.0f;
-    *std2 = (count2 > 1) ? sqrtf(*std2 / (count2 - 1)) : 0.0f;
+    *std1 = (count1 > 1) ? sqrtf(*std1 / count1) : 0.0f;
+    *std2 = (count2 > 1) ? sqrtf(*std2 / count2) : 0.0f;
 }
 
 // filtro i pixel con valore fuori dal range, mettendoli a 0
@@ -90,6 +90,8 @@ __global__ void compute_alfa_sigma2(u_int16_t **image, u_int16_t *mean, u_int16_
     
     if (idx2 < npixels) {
         for (u_int16_t i = 0; i < s; i++) {
+            std1 = 0.0f;
+            std2 = 0.0f;
             computePartialMean2(image, &part_mean1, &part_mean2, idx1, idx2, numImages);
             computeStdDev2(&std1, &std2, part_mean1, part_mean2, image, idx1, idx2, numImages);
             filterPixels2(part_mean1, std1, part_mean2, std2, image, idx1, idx2, k, numImages);

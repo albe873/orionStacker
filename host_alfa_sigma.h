@@ -7,7 +7,6 @@
 #include <string.h>
 #include <math.h>
 
-// controllo risultato CPU-GPU media standard
 void accumulatePixelsCPU(u_int32_t *acc, u_int16_t *image, int npixels) {
     for (int i = 0; i < npixels; i++) {
         acc[i] += image[i];
@@ -33,14 +32,15 @@ void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numIma
     u_int16_t immagini;
     for (int i = 0; i < npixels; i++) {
         immagini = 0;
+        std[i] = 0;
         for (int j = 0; j < numImages; j++) {
             if (image[j][i] > 0) {
                 immagini++;
-                std[i] += ((float) image[j][i] - mean[i]) * (image[j][i] - mean[i]);
+                std[i] += ((float) image[j][i] - mean[i]) * ((float) image[j][i] - mean[i]);
             }
         }
-        if (immagini > 0)
-            std[i] = sqrt(std[i] / immagini);
+        if (immagini > 1)
+            std[i] = sqrtf(std[i] / immagini);
     }
 }
 void filterPixelsCPU(u_int16_t *mean, float *std, u_int16_t **image, int k, int numImages, int npixels) {

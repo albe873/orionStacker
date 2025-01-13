@@ -172,10 +172,10 @@ int main(int argc, char **argv) {
     CHECK(cudaMemPrefetchAsync(threshold_image, npixels * sizeof(u_int16_t), dev));
 
     get_fits_data(fptr, totpixels, fits_data);
-    dim3 block_size_1d(1024);
+    dim3 block_size_1d(256);
     dim3 grid_size_1d((npixels / 2 + block_size_1d.x - 1) / block_size_1d.x);
 
-    dim3 block_size_2d(32, 32);
+    dim3 block_size_2d(16, 16);
     dim3 grid_size_2d(  (width + block_size_2d.x - 1) / block_size_2d.x, 
                         (height + block_size_2d.y - 1) / block_size_2d.y
                     );

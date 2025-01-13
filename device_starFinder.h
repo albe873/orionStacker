@@ -153,7 +153,7 @@ __global__ void detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t widt
         stepCount++;
 
         // Controlla se all’interno dell’immagine
-        if(x < 0 || x >= width || y < 0 || y >= height) {
+        if(x >= width || y >= height) {
             is_star = false; 
             break;
         }

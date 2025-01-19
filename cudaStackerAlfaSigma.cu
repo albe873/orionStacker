@@ -159,6 +159,20 @@ int main(int argc, char **argv) {
     }
     closedir(dir);
 
+    // Controllo del numero di immagini
+    if (image_num == 0) {
+        fprintf(stderr, "No valid images found in directory %s\n", in_dir);
+        exit(1);
+    } else if (image_num == 1) {
+        fprintf(stderr, "Only one image found, no stacking needed\n");
+        exit(0);
+    } else if (image_num > 65537) {
+        fprintf(stderr, "Too many images, maximum supported is 65537\n");
+        exit(1);
+    } else {
+        printf("Found %d images\n", image_num);
+    }
+
     // Allocazione memoria unificata
 
     u_int16_t **fits_data = nullptr, *mean = nullptr;

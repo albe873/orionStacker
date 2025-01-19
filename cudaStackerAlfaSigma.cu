@@ -177,7 +177,7 @@ int main(int argc, char **argv) {
         perror("opendir");
         return 1;
     }
-    while ((entry = readdir(dir)) != NULL) {
+    while ((entry = readdir(dir)) != NULL && image_count < image_num) {
         if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
             // Costruisce il percorso completo
             char file_path[1024];
@@ -199,7 +199,6 @@ int main(int argc, char **argv) {
                 CHECK(cudaMemPrefetchAsync(fits_data[image_count], npixels * sizeof(u_int16_t), dev));
                 fits_close_file(fptr, &status);
                 image_count++;
-
             }
         }
     }

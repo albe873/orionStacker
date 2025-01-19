@@ -11,8 +11,7 @@
 #include <cstdio>
 
 
-/*  --- AMD HIPify tool & HCC compiler ---
-
+/*  --- AMD HIPify tool & HCC compiler for AMD ROCM ---
 --  to generate hipified code, use the following command
 hipify-clang cudaStackerAlfaSigma.cu --cuda-path=/opt/cuda
 
@@ -20,7 +19,7 @@ hipify-clang cudaStackerAlfaSigma.cu --cuda-path=/opt/cuda
 hipcc cudaStackerAlfaSigma.cu.hip  -o cudaStackerAlfaSigma -lcfitsio -O3 -Wall
 */
 
-/*
+/*  --- NVCC compiler for NVIDIA CUDA -
 --  to compile for cuda, use the following command
 nvcc cudaStackerAlfaSigma.cu -o cudaStackerAlfaSigma -lcfitsio -O3
 */

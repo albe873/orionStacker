@@ -16,3 +16,6 @@ parte2
 cudaStackerAlfaSigmaCPU
 cudaStarFinder
 starFinderCPU
+CPUStackerAlfaSigma
+CPUStarFinder
+/results

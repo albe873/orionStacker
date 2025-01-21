@@ -43,8 +43,9 @@ int main(int argc, char **argv) {
 
     // Parsing degli argomenti
 
-    const char *in_dir = nullptr;
-    const char *out_dir = nullptr;
+    const char *in_dir = NULL;
+    const char *out_dir = ".";
+    const char *file_name = "image";
 
     int opt, option_index = 0;
     long num;
@@ -56,19 +57,23 @@ int main(int argc, char **argv) {
 
     static struct option long_options[] = {
         {"input-directory", required_argument, 0, 'i'},
-        {"output-directory", required_argument, 0, 'o'},
+        {"output-directory", optional_argument, 0, 'o'},
+        {"file-name", optional_argument, 0, 'n'},
         {"kappa", optional_argument, 0, 'k'},
         {"sigma", optional_argument, 0, 's'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "i:o:k:s", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:o:n:k:s", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'i':
                 in_dir = optarg;
                 break;
             case 'o':
                 out_dir = optarg;
+                break;
+            case 'n':
+                file_name = optarg;
                 break;
             case 'k':
                 numf = strtof(optarg, &end);
@@ -91,13 +96,13 @@ int main(int argc, char **argv) {
                 }
                 break;
             default:
-                fprintf(stderr, "Usage: %s --input-directory <input/dir> --output-directory </output/dir>\n", argv[0]);
+                fprintf(stderr, "Usage: %s --input-directory <input/dir>\n", argv[0]);
                 return 1;
         }
     }
 
     if (in_dir == nullptr || out_dir == nullptr) {
-        fprintf(stderr, "Usage: %s --input-directory </input/dir> --output-directory </output/dir>\n", argv[0]);
+        fprintf(stderr, "Usage: %s --input-directory </input/dir>\n", argv[0]);
         return 1;
     }
 
@@ -165,9 +170,6 @@ int main(int argc, char **argv) {
     } else if (image_num == 1) {
         fprintf(stderr, "Only one image found, no stacking needed\n");
         exit(0);
-    } else if (image_num > 65537) {
-        fprintf(stderr, "Too many images, maximum supported is 65537\n");
-        exit(1);
     } else {
         printf("Found %d images\n", image_num);
     }
@@ -230,7 +232,7 @@ int main(int argc, char **argv) {
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
     
-    save_image_fits(out_dir, mean, width, height, n_chan);
+    save_image_fits(out_dir, file_name, mean, width, height, n_chan);
 
 
     // free memory

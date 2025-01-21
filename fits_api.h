@@ -87,21 +87,31 @@ void print_fits_metadata(fitsfile *fptr) {
     }
 }
 
-void save_image_fits(char const *output_dir_path, u_int16_t *image_data, long width, long height, long n_chan) {
+void save_image_fits(char const *output_dir_path, char const *file_name, u_int16_t *image_data, long width, long height, long n_chan) {
     fitsfile *fptr;
     int status = 0;
+    if (strlen(output_dir_path) > 255) {
+        fprintf(stderr, "Output directory name too long\n");
+        exit(1);
+    }
+    if (strlen(file_name) > 230) {
+        fprintf(stderr, "File name too long\n");
+        exit(1);
+    }
 
-    char output_path[1024];
+    char output_path[510];
     strcpy(output_path, output_dir_path);
     remove_trailing_slash(output_path);
+    strcat(output_path, "/");
+    strcat(output_path, file_name);
 
     //aggiungo data, ora ed estensione al nome del file
-    char timestamp_str[29];
+    char timestamp_str[25];
     time_t rawtime;
     struct tm *timeinfo;
     time(&rawtime);
     timeinfo = localtime(&rawtime);
-    strftime(timestamp_str, sizeof(timestamp_str), "/image_%Y%m%d_%H%M%S.fits", timeinfo);
+    strftime(timestamp_str, sizeof(timestamp_str), "_%Y%m%d_%H%M%S.fits", timeinfo);
     strcat(output_path, timestamp_str);
 
     if (fits_create_file(&fptr, output_path, &status)) {

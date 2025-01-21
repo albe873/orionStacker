@@ -23,7 +23,8 @@ int main(int argc, char **argv) {
     // Parsing degli argomenti
 
     const char *in_dir = NULL;
-    const char *out_dir = NULL;
+    const char *out_dir = ".";
+    const char *file_name = "image";
 
     int opt, option_index = 0;
     float kappa = 3.0;
@@ -31,19 +32,23 @@ int main(int argc, char **argv) {
 
     static struct option long_options[] = {
         {"input-directory", required_argument, 0, 'i'},
-        {"output-directory", required_argument, 0, 'o'},
+        {"output-directory", optional_argument, 0, 'o'},
+        {"file-name", optional_argument, 0, 'n'},
         {"kappa", optional_argument, 0, 'k'},
         {"sigma", optional_argument, 0, 's'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "i:o:k:s", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:o:n:k:s", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'i':
                 in_dir = optarg;
                 break;
             case 'o':
                 out_dir = optarg;
+                break;
+            case 'n':
+                file_name = optarg;
                 break;
             case 'k':
                 kappa = atoi(optarg);
@@ -52,13 +57,13 @@ int main(int argc, char **argv) {
                 sigma = atof(optarg);
                 break;
             default:
-                fprintf(stderr, "Usage: %s --input-directory <input/dir> --output-directory </output/dir>\n", argv[0]);
+                fprintf(stderr, "Usage: %s --input-directory <input/dir>\n", argv[0]);
                 return 1;
         }
     }
 
     if (in_dir == NULL || out_dir == NULL) {
-        fprintf(stderr, "Usage: %s --input-directory </input/dir> --output-directory </output/dir>\n", argv[0]);
+        fprintf(stderr, "Usage: %s --input-directory </input/dir>\n", argv[0]);
         return 1;
     }
 
@@ -170,7 +175,7 @@ int main(int argc, char **argv) {
     computeMeanCPU(fits_data, mean_CPU, image_count, npixels);
     t_elapsed = cpuSecond() - t_start;
     printf("CPU Alfa Sigma elapsed time: %f\n", t_elapsed);
-    save_image_fits(out_dir, mean_CPU, width, height, depth);
+    save_image_fits(out_dir, file_name, mean_CPU, width, height, depth);
 
 
     // Pulizia della memoria

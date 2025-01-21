@@ -208,6 +208,6 @@ int main(int argc, char **argv) {
     t_elapsed = cpuSecond() - t_start;
     printf("Elapsed time: %f\n", t_elapsed);
 
-    save_image_fits("output_gray", threshold_image, width, height, 1);
-    save_image_fits("output_star", fits_data, width, height, 3);
+    save_image_fits(".", "threshold", threshold_image, width, height, 1);
+    save_image_fits(".", "detect_output", fits_data, width, height, 3);
 }

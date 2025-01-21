@@ -4,7 +4,7 @@ This project contains two CUDA-accelerated tools for astronomical image processi
 - **CudaStackerAlfaSigma**: Stacks multiple astronomical images using the Alfa-Sigma algorithm
 - **CudaStarFinder**: Detects stars in astronomical images
 
-There are also sequential implementation of the used algorithm, used to test and verify results.
+There are also sequential implementation of the used algorithm, used to test and verify results, respectively **CPUStackerAlfaSigma** and **CPUStarFinder**
 
 ## CudaStackerAlfaSigma
 

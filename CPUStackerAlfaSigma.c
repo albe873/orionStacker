@@ -9,7 +9,7 @@
 #include <math.h>
 
 /*
-gcc cudaStackerAlfaSigmaCPU.c -o cudaStackerAlfaSigmaCPU -lcfitsio -lm -O3 -march=native -Wall
+gcc CPUStackerAlfaSigma.c -o CPUStackerAlfaSigma -lcfitsio -lm -O3 -march=native -Wall
 */
 
 double cpuSecond() {

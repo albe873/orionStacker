@@ -7,7 +7,7 @@
 
 /*  compile
 
-gcc starFinderCPU.c -o starFinderCPU -lcfitsio -lm -O3 -march=native -Wall
+gcc CPUStarFinder.c -o CPUStarFinder -lcfitsio -lm -O3 -march=native -Wall
 */
 
 double cpuSecond() {

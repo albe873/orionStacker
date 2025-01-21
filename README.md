@@ -13,7 +13,8 @@ The image files to stack must be in a directory, the name of the directory need 
 
 ### Parameters
 - `--input-directory, -i` (required): Directory containing FITS files
-- `--output-directory, -o` (required): Output directory path
+- `--output-directory, -o` (optional, default .): Output directory path
+- `--file-name, -n` (optional, default: image): Output file name
 - `--kappa, -k` (optional, default: 3.0): Kappa value for outlier detection
 - `--sigma, -s` (optional, default: 5): Number of iterations
 
@@ -38,6 +39,10 @@ Detects and marks stars in FITS images.
   - `fast-adaptive`: Fast adaptive threshold
 - `--window-size, -w` (optional, default: 255): Window size for adaptive and fast-adaptive threshold
 - `--max-star-size, -m` (optional, default: 75): Maximum star diameter in pixels
+
+There will be created 2 fits image in the current directory:
+- threshold image
+- detected stars
 
 ### Example
 ```bash

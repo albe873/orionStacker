@@ -226,10 +226,7 @@ int main(int argc, char **argv) {
     printf("Computing mean with Alfa Sigma with GPU ...\n");
     t_start = cpuSecond();
 
-    CHECK(cudaMemcpyToSymbol(kappa_d, &kappa, sizeof(float)));
-    CHECK(cudaMemcpyToSymbol(sigma_d, &sigma, sizeof(u_int16_t)));
-
-    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);   
+    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels, kappa, sigma);   
     CHECK(cudaDeviceSynchronize());
     
     t_elapsed = cpuSecond() - t_start;

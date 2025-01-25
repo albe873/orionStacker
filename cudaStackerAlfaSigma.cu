@@ -228,8 +228,10 @@ int main(int argc, char **argv) {
 
     CHECK(cudaMemcpyToSymbol(kappa_d, &kappa, sizeof(float)));
     CHECK(cudaMemcpyToSymbol(sigma_d, &sigma, sizeof(u_int16_t)));
+    CHECK(cudaMemcpyToSymbol(numImages_d, &image_num, sizeof(u_int16_t)));
+    CHECK(cudaMemcpyToSymbol(npixels_d, &npixels, sizeof(u_int64_t)));
 
-    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels);   
+    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean);   
     CHECK(cudaDeviceSynchronize());
     
     t_elapsed = cpuSecond() - t_start;

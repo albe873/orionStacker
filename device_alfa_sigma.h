@@ -1,6 +1,9 @@
 #ifndef CUDA_DEVICE_ALFA_SIGMA_H
 #define CUDA_DEVICE_ALFA_SIGMA_H
 
+__constant__ float kappa_d;
+__constant__ u_int16_t sigma_d;
+
 
 // calcolo media di tutte le immagini escludendo i pixel con valore 0
 __device__ inline void computeMean2(u_int16_t **image, u_int16_t *mean, u_int64_t idx1, u_int64_t idx2, u_int16_t numImages) {
@@ -82,7 +85,7 @@ __device__ inline void filterPixels2(u_int16_t mean1, float std1, u_int16_t mean
     }
 }
 
-__global__ void compute_alfa_sigma2(u_int16_t **image, u_int16_t *mean, u_int16_t numImages, u_int64_t npixels, float k, u_int16_t s) {
+__global__ void compute_alfa_sigma2(u_int16_t **image, u_int16_t *mean, u_int16_t numImages, u_int64_t npixels) {
     u_int64_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
     idx1 *= 2;
     u_int64_t idx2 = idx1 + 1;
@@ -91,10 +94,10 @@ __global__ void compute_alfa_sigma2(u_int16_t **image, u_int16_t *mean, u_int16_
     u_int16_t part_mean1, part_mean2;
     
     if (idx2 < npixels) {
-        for (u_int16_t i = 0; i < s; i++) {
+        for (u_int16_t i = 0; i < sigma_d; i++) {
             computePartialMean2(image, &part_mean1, &part_mean2, idx1, idx2, numImages);
             computeStdDev2(&std1, &std2, part_mean1, part_mean2, image, idx1, idx2, numImages);
-            filterPixels2(part_mean1, std1, part_mean2, std2, image, idx1, idx2, k, numImages);
+            filterPixels2(part_mean1, std1, part_mean2, std2, image, idx1, idx2, kappa_d, numImages);
         }
         computeMean2(image, mean, idx1, idx2, numImages);
     }

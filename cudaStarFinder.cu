@@ -155,7 +155,6 @@ int main(int argc, char **argv) {
 
     u_int16_t *fits_data = nullptr;
     CHECK(cudaMallocManaged(&fits_data, totpixels * sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), dev));
 
     u_int16_t *gray_image = nullptr;
     CHECK(cudaMallocManaged(&gray_image, npixels * sizeof(u_int16_t)));
@@ -172,6 +171,8 @@ int main(int argc, char **argv) {
     CHECK(cudaMemPrefetchAsync(threshold_image, npixels * sizeof(u_int16_t), dev));
 
     get_fits_data(fptr, totpixels, fits_data);
+    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), dev));
+    
     dim3 block_size_1d(256);
     dim3 grid_size_1d((npixels / 2 + block_size_1d.x - 1) / block_size_1d.x);
 
@@ -202,12 +203,15 @@ int main(int argc, char **argv) {
     }
     CHECK(cudaDeviceSynchronize());
 
-    detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
+    new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
     CHECK(cudaDeviceSynchronize());
 
     t_elapsed = cpuSecond() - t_start;
     printf("Elapsed time: %f\n", t_elapsed);
 
-    save_image_fits(".", "threshold", threshold_image, width, height, 1);
-    save_image_fits(".", "detect_output", fits_data, width, height, 3);
+    const char *threshold_dir = "output_gray";
+    const char *detect_dir = "output_star";
+
+    save_image_fits(threshold_dir, "threshold", threshold_image, width, height, 1);
+    save_image_fits(detect_dir, "detect_output", fits_data, width, height, 3);
 }

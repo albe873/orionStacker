@@ -173,6 +173,7 @@ int main(int argc, char **argv) {
     get_fits_data(fptr, totpixels, fits_data);
     CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), dev));
     
+    // --- grid and block sizes ---
     dim3 block_size_1d(256);
     dim3 grid_size_1d((npixels / 2 + block_size_1d.x - 1) / block_size_1d.x);
 
@@ -184,9 +185,15 @@ int main(int argc, char **argv) {
     double t_start, t_elapsed;
     t_start = cpuSecond();
 
-    to_grayscale_fits<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
-    CHECK(cudaDeviceSynchronize());
+    // --- Convert to grayscale ---
+    if (depth == 3) {
+        to_grayscale_fits<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
+        CHECK(cudaDeviceSynchronize());
+    }
+    else // depth == 1
+        CHECK(cudaMemcpy(gray_image, fits_data, npixels * sizeof(u_int16_t), cudaMemcpyDeviceToDevice));
 
+    // --- Apply thresholding ---
     switch (threshold_algorithm) {
         case TR_SIMPLE:
             simple_threshold<<<grid_size_1d, block_size_1d>>>(gray_image, threshold_image, npixels, threshold);
@@ -203,15 +210,19 @@ int main(int argc, char **argv) {
     }
     CHECK(cudaDeviceSynchronize());
 
+    // --- Detect stars ---
+
+    //detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
     new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
     CHECK(cudaDeviceSynchronize());
 
     t_elapsed = cpuSecond() - t_start;
     printf("Elapsed time: %f\n", t_elapsed);
 
+    // --- Save images ---
     const char *threshold_dir = "output_gray";
     const char *detect_dir = "output_star";
 
     save_image_fits(threshold_dir, "threshold", threshold_image, width, height, 1);
-    save_image_fits(detect_dir, "detect_output", fits_data, width, height, 3);
+    save_image_fits(detect_dir, "detect_output", fits_data, width, height, depth);
 }

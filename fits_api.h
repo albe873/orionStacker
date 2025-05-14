@@ -53,6 +53,9 @@ void get_image_dimensions(fitsfile *fptr, long *width, long *height, long *n_cha
         }
         *n_chan = naxes[2];
     }
+    else {
+        *n_chan = 1;
+    }
 }
 
 

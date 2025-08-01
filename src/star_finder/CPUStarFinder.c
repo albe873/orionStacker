@@ -1,4 +1,4 @@
-#include "fits_api.h"
+#include "../common/fits_api.h"
 #include "host_starFinder.h"
 
 #include <stdio.h>

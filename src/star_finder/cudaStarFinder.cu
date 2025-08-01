@@ -1,5 +1,6 @@
 #include "cuda_runtime.h"
-#include "fits_api.h"
+
+#include "../common/fits_api.h"
 #include "device_starFinder.h"
 
 #include <stdio.h>

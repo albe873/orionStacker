@@ -1,5 +1,7 @@
 #include "cuda_runtime.h"
-#include "fits_api.h"
+
+#include "../common/fits_api.h"
+
 #include "device_alfa_sigma.h"
 #include "host_alfa_sigma.h"
 

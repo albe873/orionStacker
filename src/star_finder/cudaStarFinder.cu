@@ -1,6 +1,7 @@
 #include "cuda_runtime.h"
 
 #include "../common/fits_api.h"
+#include "../common/cuda_check.h"
 #include "device_starFinder.h"
 
 #include <stdio.h>
@@ -21,16 +22,6 @@ hipcc cudaStarFinder.cu.hip  -o cudaStarFinder -lcfitsio -O3 -Wall
 --  to compile for cuda, use the following command
 nvcc cudaStarFinder.cu -o cudaStarFinder -lcfitsio -O3
 */
-
-
-#define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
-inline void cuda_check(cudaError_t error_code, const char *file, int line) {
-    if (error_code != cudaSuccess) {
-        fprintf(stderr, "CUDA Error %d: %s. In file '%s' on line %d\n", error_code, cudaGetErrorString(error_code), file, line);
-        fflush(stderr);
-        exit(error_code);
-    }
-}
 
 double cpuSecond() {
     struct timespec ts;
@@ -189,6 +180,7 @@ int main(int argc, char **argv) {
     // --- Convert to grayscale ---
     if (depth == 3) {
         to_grayscale_fits<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
+        CHECK(cudaGetLastError());
         CHECK(cudaDeviceSynchronize());
     }
     else // depth == 1
@@ -198,15 +190,19 @@ int main(int argc, char **argv) {
     switch (threshold_algorithm) {
         case TR_SIMPLE:
             simple_threshold<<<grid_size_1d, block_size_1d>>>(gray_image, threshold_image, npixels, threshold);
+            CHECK(cudaGetLastError());
             break;
         case TR_ADAPTIVE:
             adaptiveThresholdingKernel<<<grid_size_2d, block_size_2d>>>(gray_image, threshold_image, width, height, window_size, threshold);
+            CHECK(cudaGetLastError());
             break;
         case TR_FAST_ADAPTIVE:
             reduce_image<<<grid_size_2d, block_size_2d>>>(gray_image, reduced_image, width, height, reduce_factor);
+            CHECK(cudaGetLastError());
             CHECK(cudaDeviceSynchronize());
             adaptiveThresholdingApprossimative<<<grid_size_2d, block_size_2d>>>(
                 gray_image, threshold_image, width, height, reduced_image, reduce_factor, window_size, threshold);
+            CHECK(cudaGetLastError());
             break;
     }
     CHECK(cudaDeviceSynchronize());
@@ -215,6 +211,7 @@ int main(int argc, char **argv) {
 
     //detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
     new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
+    CHECK(cudaGetLastError());
     CHECK(cudaDeviceSynchronize());
 
     t_elapsed = cpuSecond() - t_start;

@@ -98,12 +98,6 @@ __global__ void compute_alfa_sigma2(u_int16_t **image, u_int16_t *mean, u_int16_
         }
         computeMean2(image, mean, idx1, idx2, numImages);
     }
-
-    // printf
-    if (idx1 == 0) {
-        printf("Thread %d: idx1 = %llu, idx2 = %llu, mean1 = %u, mean2 = %u, std1 = %f, std2 = %f\n", 
-               threadIdx.x, idx1, idx2, mean[idx1], mean[idx2], std1, std2);
-    }
 }
 
 #endif // CUDA_DEVICE_ALFA_SIGMA_H

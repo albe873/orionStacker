@@ -3,6 +3,7 @@
 #include <fitsio.h>
 #include <dirent.h>
 #include <string.h>
+#include "../common/cuda_check.h"
 
 // Include STB image libraries
 #define STB_IMAGE_IMPLEMENTATION
@@ -20,14 +21,6 @@ hipify-clang cudaStackerMean.cu --cuda-path=/opt/cuda
 hipcc cudaStackerMean.cu.hip  -o cudaStackerMean -lcfitsio -O3 -Wall
 */
 
-#define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
-inline void cuda_check(cudaError_t error_code, const char *file, int line) {
-    if (error_code != cudaSuccess) {
-        fprintf(stderr, "CUDA Error %d: %s. In file '%s' on line %d\n", error_code, cudaGetErrorString(error_code), file, line);
-        fflush(stderr);
-        exit(error_code);
-    }
-}
 
 // Funzione host per la conversione RGB->Gray
 void rgbToGrayCPU(unsigned char *rgb, unsigned char *gray, int width, int height) {

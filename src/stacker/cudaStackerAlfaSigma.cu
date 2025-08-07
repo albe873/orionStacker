@@ -1,6 +1,7 @@
 #include "cuda_runtime.h"
 
 #include "../common/fits_api.h"
+#include "../common/cuda_check.h"
 
 #include "device_alfa_sigma.h"
 #include "host_alfa_sigma.h"
@@ -25,15 +26,6 @@ hipcc cudaStackerAlfaSigma.cu.hip  -o cudaStackerAlfaSigma -lcfitsio -O3 -Wall
 --  to compile for cuda, use the following command
 nvcc cudaStackerAlfaSigma.cu -o cudaStackerAlfaSigma -lcfitsio -O3
 */
-
-#define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
-inline void cuda_check(cudaError_t error_code, const char *file, int line) {
-    if (error_code != cudaSuccess) {
-        fprintf(stderr, "CUDA Error %d: %s. In file '%s' on line %d\n", error_code, cudaGetErrorString(error_code), file, line);
-        fflush(stderr);
-        exit(error_code);
-    }
-}
 
 double cpuSecond() {
     struct timespec ts;
@@ -230,11 +222,7 @@ int main(int argc, char **argv) {
     t_start = cpuSecond();
 
     compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels, kappa, sigma);
-    cudaError_t kernelError = cudaGetLastError();
-    if (kernelError != cudaSuccess) {
-        fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(kernelError));
-        exit(1);
-    }
+    CHECK(cudaGetLastError());  // Check for kernel launch errors
 
     CHECK(cudaDeviceSynchronize());
     
@@ -242,8 +230,6 @@ int main(int argc, char **argv) {
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
     
     
-    CHECK(cudaMemPrefetchAsync(mean, npixels * sizeof(u_int16_t), cudaCpuDeviceId));
-    CHECK(cudaDeviceSynchronize()); // Wait for prefetch to complete
     save_image_fits(out_dir, file_name, mean, width, height, n_chan);
 
 

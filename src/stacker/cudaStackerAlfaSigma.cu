@@ -235,6 +235,9 @@ int main(int argc, char **argv) {
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
     
+    
+    CHECK(cudaMemPrefetchAsync(mean, npixels * sizeof(u_int16_t), cudaCpuDeviceId));
+    CHECK(cudaDeviceSynchronize()); // Wait for prefetch to complete
     save_image_fits(out_dir, file_name, mean, width, height, n_chan);
 
 

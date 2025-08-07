@@ -229,7 +229,13 @@ int main(int argc, char **argv) {
     printf("Computing mean with Alfa Sigma with GPU ...\n");
     t_start = cpuSecond();
 
-    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels, kappa, sigma);   
+    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels, kappa, sigma);
+    cudaError_t kernelError = cudaGetLastError();
+    if (kernelError != cudaSuccess) {
+        fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(kernelError));
+        exit(1);
+    }
+
     CHECK(cudaDeviceSynchronize());
     
     t_elapsed = cpuSecond() - t_start;

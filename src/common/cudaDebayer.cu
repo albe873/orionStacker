@@ -136,7 +136,8 @@ int main(int argc, char **argv) {
     dim3 grid_size((npixels*image_count + block_size.x - 1)/block_size.x);
 
     double t_start = cpuSecond();
-    demosaic_bilinear_rggb_kernel<<<grid_size, block_size>>>(gray_all,rgb_all,width,height,image_count);
+    //demosaic_bilinear_rggb_kernel<<<grid_size, block_size>>>(gray_all,rgb_all,width,height,image_count);
+    demosaic_mhc_rggb_kernel<<<grid_size, block_size>>>(gray_all, rgb_all, width, height, image_count);
     CHECK(cudaDeviceSynchronize());
     double t_elapsed = cpuSecond()-t_start;
     printf("GPU debayer time: %f s\n", t_elapsed);

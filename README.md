@@ -1,4 +1,4 @@
-# CUDA Astronomical Image Processing Tools
+# ORION - Optical Reconstruction & Image Operation for Night-Sky
 
 This project contains two CUDA-accelerated tools for astronomical image processing:
 - **CudaStackerAlfaSigma**: Stacks multiple astronomical images using the Alfa-Sigma algorithm

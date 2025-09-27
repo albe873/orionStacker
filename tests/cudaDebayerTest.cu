@@ -1,6 +1,6 @@
 #include "cuda_runtime.h"
-#include "common/fits_api.h"
-#include "common/cuda_check.h"
+#include "fits_api.h"
+#include "cuda_check.h"
 #include "debayer.h"
 
 #include <stdio.h>

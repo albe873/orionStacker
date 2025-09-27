@@ -28,7 +28,13 @@ function(add_cuda_hip_executable target_name cuda_source)
         set(HIPIFIED_FILE ${CMAKE_CURRENT_BINARY_DIR}/${target_name}.hip)
         add_custom_command(
             OUTPUT ${HIPIFIED_FILE}
-            COMMAND hipify-clang ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source} -o ${HIPIFIED_FILE} --cuda-path ${CUDAToolkit_LIBRARY_ROOT} -I${CMAKE_SOURCE_DIR}/src
+            COMMAND hipify-clang ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source} -o ${HIPIFIED_FILE} --cuda-path ${CUDAToolkit_LIBRARY_ROOT} 
+                    -I${CMAKE_SOURCE_DIR}/src 
+                    -I${CMAKE_SOURCE_DIR}/src/common 
+                    -I${CMAKE_SOURCE_DIR}/src/debayer 
+                    -I${CMAKE_SOURCE_DIR}/src/debayer/include
+                    -I${CMAKE_SOURCE_DIR}/src/stacker 
+                    -I${CMAKE_SOURCE_DIR}/src/star_finder
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source}
             COMMENT "Hipifying ${cuda_source}"
         )
@@ -45,5 +51,33 @@ function(add_cuda_hip_executable target_name cuda_source)
     endif()
 endfunction()
 
+function(add_cuda_hip_library target_name cuda_source)
+    if(ROCM)
+        # Hipify the CUDA file
+        set(HIPIFIED_FILE ${CMAKE_CURRENT_BINARY_DIR}/${target_name}.hip)
+        add_custom_command(
+            OUTPUT ${HIPIFIED_FILE}
+            COMMAND hipify-clang ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source} -o ${HIPIFIED_FILE} --cuda-path ${CUDAToolkit_LIBRARY_ROOT} -I${CMAKE_SOURCE_DIR}/src
+            DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source}
+            COMMENT "Hipifying ${cuda_source}"
+        )
+        add_library(${target_name} ${HIPIFIED_FILE})
+    else()
+        add_library(${target_name} ${cuda_source})
+    endif()
+
+    # Add include directories for the compiler to find project headers
+    target_include_directories(${target_name} PRIVATE 
+        ${CMAKE_CURRENT_SOURCE_DIR}  # For local headers
+        ${CMAKE_SOURCE_DIR}/src      # For common headers like ../common/fits_api.h
+    )
+    
+    # Make include directories available to targets that link to this library
+    target_include_directories(${target_name} INTERFACE 
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+endfunction()
+
 
 add_subdirectory(src)
+add_subdirectory(tests)

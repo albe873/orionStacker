@@ -7,6 +7,8 @@
     #define cudaGetErrorString hipGetErrorString
 #endif
 
+#include <cstdio>
+
 #define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
 inline void cuda_check(cudaError_t error_code, const char *file, int line) {
     if (error_code != cudaSuccess) {

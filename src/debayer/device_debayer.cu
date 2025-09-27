@@ -1,10 +1,9 @@
-#ifndef CUDA_DEVICE_DEBAYER_H
-#define CUDA_DEVICE_DEBAYER_H
-
 #include <cuda_runtime.h>
 #include <stdint.h>
 #include "MHC_filters.h"
 #include "MHC_apply.h"
+#include "common/cuda_check.h"
+
 
 __device__ inline long clamp(long v, long lo, long hi) {
     return v < lo ? lo : (v > hi ? hi : v);
@@ -143,4 +142,21 @@ __global__ void demosaic_mhc_rggb_kernel( const u_int16_t * __restrict__ gray_al
     rgb[pixel_idx + 2*npixels] = clamp_u16(Bf);
 }
 
-#endif
+
+// ------------ wrapper functions ------------
+
+void demosaic_bilinear_rggb(const u_int16_t *gray_all, u_int16_t *rgb_all, long width, long height, u_int16_t image_count) {
+    u_int64_t npixels = width*height;
+    dim3 block_size(512);
+    dim3 grid_size((npixels*image_count + block_size.x - 1)/block_size.x);
+    demosaic_mhc_rggb_kernel<<<grid_size, block_size>>>(gray_all, rgb_all, width, height, image_count);
+    CHECK(cudaDeviceSynchronize());
+}
+
+void demosaic_mhc_rggb(const u_int16_t * __restrict__ gray_all, u_int16_t * __restrict__ rgb_all, long width, long height, u_int16_t image_count) {
+    u_int64_t npixels = (u_int64_t)width * (u_int64_t)height;
+    dim3 block_size(512);
+    dim3 grid_size((npixels*image_count + block_size.x - 1)/block_size.x);
+    demosaic_mhc_rggb_kernel<<<grid_size, block_size>>>(gray_all, rgb_all, width, height, image_count);
+    CHECK(cudaDeviceSynchronize());
+}

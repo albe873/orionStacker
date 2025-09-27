@@ -1,21 +1,13 @@
 #include "cuda_runtime.h"
-#include "fits_api.h"
-#include "device_debayer.h"
+#include "common/fits_api.h"
+#include "common/cuda_check.h"
+#include "debayer.h"
 
 #include <stdio.h>
 #include <dirent.h>
 #include <string.h>
 #include <ctime>
 #include <getopt.h>
-
-#define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
-inline void cuda_check(cudaError_t error_code, const char *file, int line) {
-    if (error_code != cudaSuccess) {
-        fprintf(stderr, "CUDA Error %d: %s. In file '%s' on line %d\n",
-                error_code, cudaGetErrorString(error_code), file, line);
-        exit(error_code);
-    }
-}
 
 double cpuSecond() {
     struct timespec ts;
@@ -132,13 +124,10 @@ int main(int argc, char **argv) {
     CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(u_int16_t), dev));
 
     // Esegui kernel
-    dim3 block_size(512);
-    dim3 grid_size((npixels*image_count + block_size.x - 1)/block_size.x);
 
     double t_start = cpuSecond();
     //demosaic_bilinear_rggb_kernel<<<grid_size, block_size>>>(gray_all,rgb_all,width,height,image_count);
-    demosaic_mhc_rggb_kernel<<<grid_size, block_size>>>(gray_all, rgb_all, width, height, image_count);
-    CHECK(cudaDeviceSynchronize());
+    demosaic_mhc_rggb(gray_all, rgb_all, width, height, image_count);
     double t_elapsed = cpuSecond()-t_start;
     printf("GPU debayer time: %f s\n", t_elapsed);
 

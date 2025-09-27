@@ -26,9 +26,11 @@ __device__ inline float apply_kernel_5x5(
 ) {
     float acc = 0.0f;
 
+    #pragma unroll 5
     for (int ky = -2; ky <= 2; ky++) {
         int yy = clamp_index(y + ky, 0, height - 1);
 
+        #pragma unroll 5
         for (int kx = -2; kx <= 2; kx++) {
             int xx = clamp_index(x + kx, 0, width - 1);
 

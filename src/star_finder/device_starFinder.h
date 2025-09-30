@@ -438,13 +438,4 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
     }
 }
 
-__device__ u_int16_t sanity_check_array[36] = {
-    0, 0, 0, 0, 0, 0,
-    0, 0, 1, 1, 1, 0,
-    0, 0, 1, 2, 1, 0,
-    0, 0, 1, 1, 1, 0,
-    0, 0, 0, 1, 0, 0,
-    0, 0, 0, 0, 0, 0
-};
-
 #endif // CUDA_DEVICE_THRESHOLDING_H

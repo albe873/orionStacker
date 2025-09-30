@@ -373,6 +373,7 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
         if (all_black && input[current_idx] > 0)
             all_black = false;
     }
+    if (idx == 15) printf("Debug: finished loop, is_star = %d, all_black = %d, stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, finished_dir = {%d, %d, %d, %d}\n", is_star, all_black, stepCurrentLimit[0], stepCurrentLimit[1], finished_dir[0], finished_dir[1], finished_dir[2], finished_dir[3]);
 
     final_dim_x = stepCurrentLimit[0];
     final_dim_y = stepCurrentLimit[1];

@@ -239,7 +239,7 @@ __device__ inline int previous_dir(int dir) {
 
 
 // Kernel per la rilevazione delle stelle
-__global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t width, u_int64_t height, u_int16_t windowSize_star) {
+__global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t width, u_int64_t height, u_int16_t windowSize_star, int idxDebug) {
     // coordinates
     u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
     u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -252,7 +252,7 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
     u_int64_t idx = y * width + x;
     u_int16_t current = input[idx];
 
-    if (idx == 17) printf("Debug: current pixel value at idx 17 is %u, x is %lu, y is %lu\n", current, x, y);
+    if (idx == idxDebug) printf("Debug: current pixel value at idx %d is %u, x is %lu, y is %lu\n", idxDebug, current, x, y);
     
     // Se il pixel corrente è nero, non è una stella
     if (current == 0)
@@ -279,13 +279,13 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
     u_int32_t final_dim_y = 0;
 
     while(stepCurrentLimit[0] < windowSize_star && stepCurrentLimit[1] < windowSize_star) {
-        if (idx == 17) printf("Debug: stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, dir = %u, dir_x_or_y = %u, stepCount = %u, cx = %lu, cy = %lu\n", stepCurrentLimit[0], stepCurrentLimit[1], dir, dir_x_or_y, stepCount, x, y); 
+        if (idx == idxDebug) printf("Debug: stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, dir = %u, dir_x_or_y = %u, stepCount = %u, cx = %lu, cy = %lu\n", stepCurrentLimit[0], stepCurrentLimit[1], dir, dir_x_or_y, stepCount, x, y); 
 
         // Controllo se ho completato un lato
         if(stepCount == stepCurrentLimit[dir_x_or_y]) {
             stepCount = 0;
 
-            if (idx == 17) printf("Debug: completed side in direction %u, all_black = %d\n", dir, all_black);
+            if (idx == idxDebug) printf("Debug: completed side in direction %u, all_black = %d\n", dir, all_black);
 
             // Incremento il limite di passi della direzione corrente
             // solo se non ho finito la direzione precedente
@@ -373,7 +373,7 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
         if (all_black && input[current_idx] > 0)
             all_black = false;
     }
-    if (idx == 17) printf("Debug: finished loop, is_star = %d, all_black = %d, stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, finished_dir = {%d, %d, %d, %d}\n", is_star, all_black, stepCurrentLimit[0], stepCurrentLimit[1], finished_dir[0], finished_dir[1], finished_dir[2], finished_dir[3]);
+    if (idx == idxDebug) printf("Debug: finished loop, is_star = %d, all_black = %d, stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, finished_dir = {%d, %d, %d, %d}\n", is_star, all_black, stepCurrentLimit[0], stepCurrentLimit[1], finished_dir[0], finished_dir[1], finished_dir[2], finished_dir[3]);
 
     final_dim_x = stepCurrentLimit[0];
     final_dim_y = stepCurrentLimit[1];
@@ -393,6 +393,7 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
     if (is_star && surrounded_by_black && (final_dim / 2) > 2 && final_dim < windowSize_star) {
         output[y * width + x] = 65535; // segna il centro della stella (opzionale)
         printf("Star detected at (%lu, %lu) with size %u\n", start_x, start_y, final_dim);
+        if (idx == idxDebug) printf("star found\n");
         /*
         // Disegna il quadrato basato sul centro INIZIALE e il limite MINIMO trovato
         int64_t limit = final_dim / 2; // Usiamo int64_t per coerenza con le coordinate box_...

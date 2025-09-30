@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
     u_int16_t reduce_factor = 8;
     u_int16_t window_size = 255;
     u_int16_t max_star_size = 75;
+    int idxDebug = -1; // Index of the pixel to debug, -1 means no debug
 
     enum ThresholdType {
         TR_SIMPLE,
@@ -55,10 +56,11 @@ int main(int argc, char **argv) {
         {"threshold-algorith", optional_argument, 0, 'a'},
         {"window-size", optional_argument, 0, 'w'},
         {"max-star-size", optional_argument, 0, 'm'},
+        {"debug-idx", optional_argument, 0, 'd'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:m:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:m:d:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'f':
                 filename = optarg;
@@ -112,6 +114,14 @@ int main(int argc, char **argv) {
                     fprintf(stderr, "Invalid max star size, using default\n");
                 } else {
                     max_star_size = num;
+                }
+                break;
+            case 'd':
+                num = strtol(optarg, &end, 10);
+                if (end == optarg) {
+                    fprintf(stderr, "Cannot convert debug index, using default\n");
+                } else {
+                    idxDebug = num;
                 }
                 break;
             default:
@@ -228,7 +238,7 @@ int main(int argc, char **argv) {
                                (7 + block_size_2d.y - 1) / block_size_2d.y
                             );
 
-    new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
+    new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size, idxDebug);
     CHECK(cudaGetLastError());
     CHECK(cudaDeviceSynchronize());
 

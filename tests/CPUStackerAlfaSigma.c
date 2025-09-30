@@ -1,4 +1,4 @@
-#include "../common/fits_api.h"
+#include "fits_api.h"
 #include "host_alfa_sigma.h"
 
 #include <stdio.h>

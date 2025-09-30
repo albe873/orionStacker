@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
     // --- Detect stars ---
 
     //detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
-    new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
+    new_detect_stars<<<grid_size_2d, block_size_2d>>>(sanity_check_array, fits_data, 6, 6, max_star_size);
     CHECK(cudaGetLastError());
     CHECK(cudaDeviceSynchronize());
 

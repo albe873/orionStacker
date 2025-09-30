@@ -216,6 +216,7 @@ int main(int argc, char **argv) {
             break;
     }
     CHECK(cudaDeviceSynchronize());
+    CHECK(cudaGetLastError());
 
     // --- Detect stars ---
 
@@ -238,6 +239,9 @@ int main(int argc, char **argv) {
                                (7 + block_size_2d.y - 1) / block_size_2d.y
                             );
 
+    if (idxDebug >= 0) {
+        printf("Debugging index %d, value %d\n", idxDebug, threshold_image[idxDebug]);
+    }
     new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size, idxDebug);
     CHECK(cudaGetLastError());
     CHECK(cudaDeviceSynchronize());

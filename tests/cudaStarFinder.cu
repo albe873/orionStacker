@@ -210,7 +210,20 @@ int main(int argc, char **argv) {
     // --- Detect stars ---
 
     //detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
-    new_detect_stars<<<grid_size_2d, block_size_2d>>>(sanity_check_array, fits_data, 6, 6, max_star_size);
+
+    u_int16_t sanity_check_array[36] = {
+        0, 0, 0, 0, 0, 0,
+        0, 0, 1, 1, 1, 0,
+        0, 0, 1, 2, 1, 0,
+        0, 0, 1, 1, 1, 0,
+        0, 0, 0, 1, 0, 0,
+        0, 0, 0, 0, 0, 0
+    };
+    for (int i = 0; i < 36; i++) {
+        threshold_image[i] = sanity_check_array[i];
+    }
+
+    new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, 6, 6, max_star_size);
     CHECK(cudaGetLastError());
     CHECK(cudaDeviceSynchronize());
 

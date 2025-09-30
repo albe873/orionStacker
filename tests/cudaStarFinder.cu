@@ -211,23 +211,24 @@ int main(int argc, char **argv) {
 
     //detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
 
-    u_int16_t sanity_check_array[36] = {
-        0, 0, 0, 0, 0, 0,
-        0, 0, 1, 1, 1, 0,
-        0, 0, 1, 2, 1, 0,
-        0, 0, 1, 1, 1, 0,
-        0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0
+    u_int16_t sanity_check_array[49] = {
+        0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 2, 1, 0, 0,
+        0, 0, 1, 1, 1, 0, 0,
+        0, 0, 0, 1, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0,
     };
-    for (int i = 0; i < 36; i++) {
+    for (int i = 0; i < 49; i++) {
         threshold_image[i] = sanity_check_array[i];
     }
 
-    dim3 grid_size_2d_sanity(  (6 + block_size_2d.x - 1) / block_size_2d.x,
-                               (6 + block_size_2d.y - 1) / block_size_2d.y
+    dim3 grid_size_2d_sanity(  (7 + block_size_2d.x - 1) / block_size_2d.x,
+                               (7 + block_size_2d.y - 1) / block_size_2d.y
                             );
 
-    new_detect_stars<<<grid_size_2d_sanity, block_size_2d>>>(threshold_image, fits_data, 6, 6, max_star_size);
+    new_detect_stars<<<grid_size_2d_sanity, block_size_2d>>>(threshold_image, fits_data, 7, 7, max_star_size);
     CHECK(cudaGetLastError());
     CHECK(cudaDeviceSynchronize());
 

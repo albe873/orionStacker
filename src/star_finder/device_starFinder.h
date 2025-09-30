@@ -279,7 +279,7 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
     u_int32_t final_dim_y = 0;
 
     while(stepCurrentLimit[0] < windowSize_star && stepCurrentLimit[1] < windowSize_star) {
-        if (idx == 15) printf("Debug: stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, dir = %u, dir_x_or_y = %u, stepCount = %u\n", stepCurrentLimit[0], stepCurrentLimit[1], dir, dir_x_or_y, stepCount); 
+        if (idx == 15) printf("Debug: stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, dir = %u, dir_x_or_y = %u, stepCount = %u, cx = %lu, cy = %lu\n", stepCurrentLimit[0], stepCurrentLimit[1], dir, dir_x_or_y, stepCount, x, y); 
 
         // Controllo se ho completato un lato
         if(stepCount == stepCurrentLimit[dir_x_or_y]) {

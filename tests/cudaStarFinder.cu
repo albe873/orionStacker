@@ -223,9 +223,9 @@ int main(int argc, char **argv) {
         threshold_image[i] = sanity_check_array[i];
     }
 
-    dim3 grid_size_2d_sanity(  (6 + block_size_2d.x - 1) / block_size_2d.x, 
-                        (6 + block_size_2d.y - 1) / block_size_2d.y
-                    );
+    dim3 grid_size_2d_sanity(  (6 + block_size_2d.x - 1) / block_size_2d.x,
+                               (6 + block_size_2d.y - 1) / block_size_2d.y
+                            );
 
     new_detect_stars<<<grid_size_2d_sanity, block_size_2d>>>(threshold_image, fits_data, 6, 6, max_star_size);
     CHECK(cudaGetLastError());

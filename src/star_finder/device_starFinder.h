@@ -252,7 +252,7 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
     u_int64_t idx = y * width + x;
     u_int16_t current = input[idx];
 
-    if (idx == 15) printf("Debug: current pixel value at idx 15 is %u, x is %u, y is %u\n", current, x, y);
+    if (idx == 15) printf("Debug: current pixel value at idx 15 is %lu, x is %lu, y is %lu\n", current, x, y);
     
     // Se il pixel corrente è nero, non è una stella
     if (current == 0)

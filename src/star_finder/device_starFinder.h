@@ -391,7 +391,9 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
 
     // Verifica le condizioni per disegnare
     if (is_star && surrounded_by_black && (final_dim / 2) > 2 && final_dim < windowSize_star) {
-
+        output[y * width + x] = 65535; // segna il centro della stella (opzionale)
+        printf("Star detected at (%lu, %lu) with size %u\n", start_x, start_y, final_dim);
+        /*
         // Disegna il quadrato basato sul centro INIZIALE e il limite MINIMO trovato
         int64_t limit = final_dim / 2; // Usiamo int64_t per coerenza con le coordinate box_...
 
@@ -436,6 +438,7 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
                  }
             }
         }
+            */
     }
 }
 

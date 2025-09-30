@@ -221,14 +221,14 @@ int main(int argc, char **argv) {
         0, 0, 0, 0, 0, 0, 0,
     };
     for (int i = 0; i < 49; i++) {
-        threshold_image[i] = sanity_check_array[i];
+        //threshold_image[i] = sanity_check_array[i];
     }
 
     dim3 grid_size_2d_sanity(  (7 + block_size_2d.x - 1) / block_size_2d.x,
                                (7 + block_size_2d.y - 1) / block_size_2d.y
                             );
 
-    new_detect_stars<<<grid_size_2d_sanity, block_size_2d>>>(threshold_image, fits_data, 7, 7, max_star_size);
+    new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
     CHECK(cudaGetLastError());
     CHECK(cudaDeviceSynchronize());
 

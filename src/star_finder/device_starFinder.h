@@ -322,9 +322,24 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
             // mi muovo, saltando tutti i controlli e vado al ciclo sucessivo
             x += directions[dir][0] * stepCount;
             y += directions[dir][1] * stepCount;
+            if (x == 0 || y == 0 || x == width-1 || y == height-1 ) {
+                is_star = false;
+                break;
+            }
+
+            // Boundary check after moving
+            if (x >= width || y >= height) {
+                is_star = false;
+                break;
+            }
             continue;
         }
 
+        // check se sono ai bordi dell'immagine
+        if (x == 0 || y == 0 || x == width-1 || y == height-1 ) {
+            is_star = false;
+            break;
+        }
         // mi muovo di un passo
         x += directions[dir][0];
         y += directions[dir][1];

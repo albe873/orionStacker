@@ -39,8 +39,10 @@ int main(int argc, char **argv) {
     u_int16_t threshold = 1000;
     u_int16_t reduce_factor = 8;
     u_int16_t window_size = 255;
-    u_int16_t max_star_size = 75;
-    int idxDebug = -1; // Index of the pixel to debug, -1 means no debug
+    u_int16_t max_star_size = 100;
+    u_int16_t min_star_size = 10;
+    int d_x = -1;
+    int d_y = -1;
 
     enum ThresholdType {
         TR_SIMPLE,
@@ -55,12 +57,14 @@ int main(int argc, char **argv) {
         {"reduce-factor", optional_argument, 0, 'r'},
         {"threshold-algorith", optional_argument, 0, 'a'},
         {"window-size", optional_argument, 0, 'w'},
-        {"max-star-size", optional_argument, 0, 'm'},
-        {"debug-idx", optional_argument, 0, 'd'},
+        {"max-star-size", optional_argument, 0, 'M'},
+        {"min-star-size", optional_argument, 0, 'm'},
+        {"dx", optional_argument, 0, 'x'},
+        {"dy", optional_argument, 0, 'y'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:m:d:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:M:m:x:y:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'f':
                 filename = optarg;
@@ -106,7 +110,7 @@ int main(int argc, char **argv) {
                     window_size = num;
                 }
                 break;
-            case 'm':
+            case 'M':
                 num = strtol(optarg, &end, 10);
                 if (end == optarg) {
                     fprintf(stderr, "Cannot convert max star size, using default\n");
@@ -116,12 +120,30 @@ int main(int argc, char **argv) {
                     max_star_size = num;
                 }
                 break;
-            case 'd':
+            case 'm':
                 num = strtol(optarg, &end, 10);
                 if (end == optarg) {
-                    fprintf(stderr, "Cannot convert debug index, using default\n");
+                    fprintf(stderr, "Cannot convert min star size, using default\n");
+                } else if (num < 0 || num > 65535 || num >= max_star_size) {
+                    fprintf(stderr, "Invalid min star size, using default\n");
                 } else {
-                    idxDebug = num;
+                    min_star_size = num;
+                }
+                break;
+            case 'x':
+                num = strtol(optarg, &end, 10);
+                if (end == optarg) {
+                    fprintf(stderr, "Cannot convert debug x, using default\n");
+                } else {
+                    d_x = num;
+                }
+                break;
+            case 'y':
+                num = strtol(optarg, &end, 10);
+                if (end == optarg) {
+                    fprintf(stderr, "Cannot convert debug y, using default\n");
+                } else {
+                    d_y = num;
                 }
                 break;
             default:
@@ -239,10 +261,7 @@ int main(int argc, char **argv) {
                                (7 + block_size_2d.y - 1) / block_size_2d.y
                             );
 
-    if (idxDebug >= 0) {
-        printf("Debugging index %d, value %d\n", idxDebug, threshold_image[idxDebug]);
-    }
-    new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size, idxDebug);
+    new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size, min_star_size, d_x, height - d_y);
     CHECK(cudaGetLastError());
     CHECK(cudaDeviceSynchronize());
 

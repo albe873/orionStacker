@@ -1,6 +1,8 @@
 #ifndef CUDA_DEVICE_THRESHOLDING_H
 #define CUDA_DEVICE_THRESHOLDING_H
 
+#define MIN_STAR_SIZE 6
+
 // fits data is in planar format
 // calculating two pixels at a time to improve cache hit rate
 __global__ void to_grayscale_fits(u_int16_t *image, u_int16_t *gray_image, u_int64_t npixels) {
@@ -236,10 +238,37 @@ __device__ inline int previous_dir(int dir) {
     return (dir == 0) ? 3 : dir - 1;
 }
 
+__device__ inline void draw_rectangle(u_int16_t *output, u_int64_t width, u_int64_t min_x, u_int64_t min_y, u_int32_t dim_x, u_int32_t dim_y) {
+        // Disegna il quadrato a partire dalle coordinate minime
+        
+        // ciclo sui lati orizzontali
+        u_int64_t idx1 = min_y * width + min_x;
+        u_int64_t idx2 = (min_y + dim_y) * width + min_x;
+        for (int i = 0; i < dim_x; i++) {
+            output[idx1] = 65535;
+            output[idx2] = 65535;
+            // basta un incremento unitario
+            idx1++;
+            idx2++;
+        }
+
+        // ciclo sui lati verticali
+        idx1 = min_y * width + min_x;
+        idx2 = min_y * width + min_x + dim_x;
+        for (int j = 0; j < dim_y; j++) {
+            output[idx1] = 65535;
+            output[idx2] = 65535;
+            // devo cambiare riga, incremento pari alla larghezza della riga
+            idx1 += width;
+            idx2 += width;
+        }
+        output[idx2] = 65535; // segna l'angolo in alto a destra
+}
+
 
 
 // Kernel per la rilevazione delle stelle
-__global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t width, u_int64_t height, u_int16_t windowSize_star, int idxDebug) {
+__global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t width, u_int64_t height, u_int16_t max_star_size, u_int16_t min_star_size, int x_debug, int y_debug) {
     // coordinates
     u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
     u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -252,7 +281,8 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
     u_int64_t idx = y * width + x;
     u_int16_t current = input[idx];
 
-    if (idx == idxDebug) printf("Debug: current pixel value at idx %d is %u, x is %lu, y is %lu\n", idxDebug, current, x, y);
+    bool is_debug = (x == x_debug && y == y_debug);
+    if (is_debug) printf("Debug: current pixel value at idx %d is %u, x is %lu, y is %lu\n", idx, current, x, height - y);
     
     // Se il pixel corrente è nero, non è una stella
     if (current == 0)
@@ -264,28 +294,28 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
 
     int8_t directions[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};  // variazione x e y per ogni direzione
 
-    u_int32_t   stepCount = 0;                              // contatore dei passi fatti nella direzione corrente
-    u_int32_t   stepCurrentLimit[2] = {1, 1};               // step limit per x e y
-    u_int8_t    dir = 0;                                    // direzione corrente
-    int8_t      dir_x_or_y = 0;                             // = 0 se x, = 1 se y, per comodità
+    int32_t   stepCount = 0;                              // contatore dei passi fatti nella direzione corrente
+    int32_t   stepCurrentLimit[2] = {1, 1};               // step limit per x e y
+    int8_t    dir = 0;                                    // direzione corrente
+    int8_t    dir_x_or_y = 0;                             // = 0 se x, = 1 se y, per comodità
 
-    u_int64_t   current_idx;                                // indice del pixel corrente
+    u_int64_t current_idx;                                // indice del pixel corrente
 
     // salvo le coordinate iniziali
     u_int64_t start_x = x;
     u_int64_t start_y = y;
 
-    u_int32_t final_dim_x = 0;
-    u_int32_t final_dim_y = 0;
+    u_int64_t min_x = x;
+    u_int64_t min_y = y;
 
-    while(stepCurrentLimit[0] < windowSize_star && stepCurrentLimit[1] < windowSize_star) {
-        if (idx == idxDebug) printf("Debug: stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, dir = %u, dir_x_or_y = %u, stepCount = %u, cx = %lu, cy = %lu\n", stepCurrentLimit[0], stepCurrentLimit[1], dir, dir_x_or_y, stepCount, x, y); 
+    while(stepCurrentLimit[0] < max_star_size && stepCurrentLimit[1] < max_star_size) {
+        if (is_debug) printf("Debug: stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, dir = %u, dir_x_or_y = %u, stepCount = %u, cx = %lu, cy = %lu\n", stepCurrentLimit[0], stepCurrentLimit[1], dir, dir_x_or_y, stepCount, x, height - y); 
 
         // Controllo se ho completato un lato
         if(stepCount == stepCurrentLimit[dir_x_or_y]) {
             stepCount = 0;
 
-            if (idx == idxDebug) printf("Debug: completed side in direction %u, all_black = %d\n", dir, all_black);
+            if (is_debug) printf("Debug: completed side in direction %u, all_black = %d\n", dir, all_black);
 
             // Incremento il limite di passi della direzione corrente
             // solo se non ho finito la direzione precedente
@@ -294,12 +324,14 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
                 stepCurrentLimit[dir_x_or_y]++;
 
             // Controllo se tutti i pixel sono neri, allora finisco la ricerca della stella nella direzione
-            if (all_black) {
+            if (all_black && stepCurrentLimit[dir_x_or_y] > min_star_size) {
                 finished_dir[dir] = true;
 
                 // controllo se ho finito tutte le direzioni
-                if (finished_dir[0] && finished_dir[1] && finished_dir[2] && finished_dir[3])
+                if (finished_dir[0] && finished_dir[1] && finished_dir[2] && finished_dir[3]) {
+                    if (is_debug) printf("Debug: all directions finished, breaking loop\n");
                     break;
+                }
             }
 
 
@@ -320,43 +352,41 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
             stepCount = stepCurrentLimit[dir_x_or_y];
 
             // mi muovo, saltando tutti i controlli e vado al ciclo sucessivo
+            if (is_debug) printf("Debug: direction %u finished, skipping %u steps (x = %lu, y = %lu)\n", dir, stepCount, x, y);
             x += directions[dir][0] * stepCount;
             y += directions[dir][1] * stepCount;
-            if (x == 0 || y == 0 || x == width-1 || y == height-1 ) {
+            if (is_debug) printf("Debug: new position after skipping (x = %lu, y = %lu)\n", x, y);
+            if (x >= width-1 || y >= height-1) {
                 is_star = false;
+                if (is_debug) printf("Debug: out of bounds after moving, breaking loop (x = %lu, y = %lu, stepCount = %u)\n", x, y, stepCount);
                 break;
             }
 
-            // Boundary check after moving
-            if (x >= width || y >= height) {
-                is_star = false;
-                break;
-            }
             continue;
         }
 
-        // check se sono ai bordi dell'immagine
-        if (x == 0 || y == 0 || x == width-1 || y == height-1 ) {
-            is_star = false;
-            break;
-        }
         // mi muovo di un passo
         x += directions[dir][0];
         y += directions[dir][1];
+
+        // check se sono ai bordi dell'immagine
+        if (x >= width || y >= height) {
+            is_star = false;
+            if (is_debug) printf("Debug: out of bounds at edge, breaking loop\n");
+            break;
+        }     
         // incremento il contatore dei passi fatti
         stepCount++;
-
-        // Controlla se all’interno dell’immagine, se sono fuori, non è il centro di una stella, esco dal ciclo
-        if(x >= width || y >= height) {
-            is_star = false; 
-            break;
-        }
+        // aggiorno le coordinate minime
+        min_x = min(x, min_x);
+        min_y = min(y, min_y);
 
         // Controlla se il pixel corrente è maggiore del pixel centrale
         // se è maggiore allora non è il centro di una stella, esco dal ciclo
         current_idx = y * width + x;
         if (input[current_idx] > current) {
             is_star = false;
+            if (is_debug) printf("Debug: pixel (%lu, %lu) is brighter than center, breaking loop\n", x, height - y);
             break;
         }
         
@@ -365,6 +395,7 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
         if (input[current_idx] == current) {
             if (current_idx > idx) {
                 is_star = false;
+                if (is_debug) printf("Debug: pixel (%lu, %lu) has same brightness but higher idx, breaking loop\n", x, height - y);
                 break;
             }
         }
@@ -373,73 +404,23 @@ __global__ void new_detect_stars(u_int16_t *input, u_int16_t *output, u_int64_t 
         if (all_black && input[current_idx] > 0)
             all_black = false;
     }
-    if (idx == idxDebug) printf("Debug: finished loop, is_star = %d, all_black = %d, stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, finished_dir = {%d, %d, %d, %d}\n", is_star, all_black, stepCurrentLimit[0], stepCurrentLimit[1], finished_dir[0], finished_dir[1], finished_dir[2], finished_dir[3]);
+    if (is_debug) printf("Debug: finished loop, is_star = %d, all_black = %d, stepCurrentLimit[0] = %u, stepCurrentLimit[1] = %u, finished_dir = {%d, %d, %d, %d}\n", is_star, all_black, stepCurrentLimit[0], stepCurrentLimit[1], finished_dir[0], finished_dir[1], finished_dir[2], finished_dir[3]);
 
-    final_dim_x = stepCurrentLimit[0];
-    final_dim_y = stepCurrentLimit[1];
+    // Usa il MINIMO dei limiti finali per definire la dimensione
+    u_int32_t final_dim = min(stepCurrentLimit[0], stepCurrentLimit[1]);
 
-    // Condizione finale: stella valida E tutte le direzioni terminate con nero
-    bool surrounded_by_black = finished_dir[0] && finished_dir[1] && finished_dir[2] && finished_dir[3];
-
-    // Usa il MINIMO dei limiti finali per definire la dimensione del quadrato da disegnare
-    // e per il controllo della dimensione minima.
-    // Assicurati che final_dim_x e final_dim_y siano stati salvati nel loop
-    u_int32_t final_dim = min(final_dim_x, final_dim_y); // final_dim_x/y should be saved when loop breaks
-
-
-
-
-    // Verifica le condizioni per disegnare
-    if (is_star && surrounded_by_black && (final_dim / 2) > 2 && final_dim < windowSize_star) {
+    // Verifica le condizioni per essere una stella
+    // 1 variabile is_star = true
+    // 2 tutti i lati devono essere finiti
+    // 3 dimensione massima non deve essere raggiunta
+    if (is_star && 
+        finished_dir[0] && finished_dir[1] && finished_dir[2] && finished_dir[3] &&
+        stepCurrentLimit[0] < max_star_size && stepCurrentLimit[1] < max_star_size)
+    {
         output[y * width + x] = 65535; // segna il centro della stella (opzionale)
-        printf("Star detected at (%lu, %lu) with size %u\n", start_x, start_y, final_dim);
-        if (idx == idxDebug) printf("star found\n");
-        /*
-        // Disegna il quadrato basato sul centro INIZIALE e il limite MINIMO trovato
-        int64_t limit = final_dim / 2; // Usiamo int64_t per coerenza con le coordinate box_...
-
-        // Calcola le coordinate del bounding box, clampate ai limiti dell'immagine
-        // Il raggio è 'limit', quindi il box va da centro-limit a centro+limit
-        // Usa initial_x/y (rinominati da start_x/y per chiarezza)
-        int64_t box_start_x = max(0L, (int64_t)start_x - limit);
-        int64_t box_start_y = max(0L, (int64_t)start_y - limit);
-        int64_t box_end_x   = min((int64_t)width - 1, (int64_t)start_x + limit);
-        int64_t box_end_y   = min((int64_t)height - 1, (int64_t)start_y + limit);
-
-        // Disegna il bordo del quadrato (assicurati che le coordinate siano valide)
-        // Lato superiore
-        if (box_start_y >= 0 && box_start_y < height) { // Check row validity
-            for (int64_t i = box_start_x; i <= box_end_x; ++i) {
-                 if (i >= 0 && i < width) { // Check column validity
-                    output[box_start_y * width + i] = 65535;
-                 }
-            }
-        }
-        // Lato inferiore (evita ridisegno se altezza è 1)
-        if (box_end_y >= 0 && box_end_y < height && box_end_y != box_start_y) { // Check row validity
-            for (int64_t i = box_start_x; i <= box_end_x; ++i) {
-                 if (i >= 0 && i < width) { // Check column validity
-                    output[box_end_y * width + i] = 65535;
-                 }
-            }
-        }
-        // Lato sinistro (escludi angoli già disegnati)
-        if (box_start_x >= 0 && box_start_x < width) { // Check column validity
-            for (int64_t j = box_start_y + 1; j < box_end_y; ++j) { // Start from +1 and end before end_y
-                 if (j >= 0 && j < height) { // Check row validity
-                    output[j * width + box_start_x] = 65535;
-                 }
-            }
-        }
-        // Lato destro (escludi angoli, evita ridisegno se larghezza è 1)
-        if (box_end_x >= 0 && box_end_x < width && box_end_x != box_start_x) { // Check column validity
-            for (int64_t j = box_start_y + 1; j < box_end_y; ++j) { // Start from +1 and end before end_y
-                 if (j >= 0 && j < height) { // Check row validity
-                    output[j * width + box_end_x] = 65535;
-                 }
-            }
-        }
-            */
+        printf("Star detected at (%lu, %lu) with size %u, idx= %lu\n", start_x, height - start_y, final_dim, idx);
+        //if (idx == idxDebug) printf("star found\n");
+        draw_rectangle(output, width, min_x, min_y, stepCurrentLimit[0], stepCurrentLimit[1]);
     }
 }
 

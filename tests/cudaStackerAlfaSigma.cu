@@ -221,7 +221,7 @@ int main(int argc, char **argv) {
     printf("Computing mean with Alfa Sigma with GPU ...\n");
     t_start = cpuSecond();
 
-    compute_alfa_sigma2<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels, kappa, sigma);
+    compute_alfa_sigma_uint16<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels, kappa, sigma);
     CHECK(cudaGetLastError());  // Check for kernel launch errors
 
     CHECK(cudaDeviceSynchronize());

@@ -25,8 +25,8 @@ endif()
 # features
 
 # Find OpenCV with xfeatures2d for SURF support
-find_package( OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui features2d xfeatures2d )
-include_directories( ${OpenCV_INCLUDE_DIRS} )
+#find_package( OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui features2d xfeatures2d )
+#include_directories( ${OpenCV_INCLUDE_DIRS} )
 
-add_executable(features features.cpp)
-target_link_libraries(features   ${OpenCV_LIBS})
+#add_executable(features features.cpp)
+#target_link_libraries(features   ${OpenCV_LIBS})

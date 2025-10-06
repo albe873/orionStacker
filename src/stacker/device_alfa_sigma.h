@@ -133,10 +133,9 @@ __device__ inline void filterPixels_uint16(u_int16_t mean, float std, u_int16_t 
 }
 
 
-__global__ void compute_alfa_sigma_uint16(u_int16_t **image, u_int16_t *mean, u_int16_t numImages, u_int64_t npixels, float k, u_int16_t s) {
-    u_int64_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
-    idx1 *= 2;
-    u_int64_t idx2 = idx1 + 1;
+__global__ void compute_alfa_sigma_uint16(u_int16_t **image, u_int16_t *mean, const u_int16_t numImages, const u_int64_t npixels, const float k, const u_int16_t s) {
+    const u_int64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+    const u_int64_t idx2 = idx1 + 1;
 
     float std1, std2;
     u_int16_t part_mean1, part_mean2;
@@ -349,12 +348,11 @@ __device__ inline void filterPixels_uint8(u_int8_t mean, float std, u_int8_t **i
 }
 
 
-__global__ void compute_alfa_sigma_uint8(u_int8_t **image, u_int8_t *mean, u_int16_t numImages, u_int64_t npixels, float k, u_int16_t s) {
-    u_int64_t idx1 = blockIdx.x * blockDim.x + threadIdx.x;
-    idx1 *= 4;
-    u_int64_t idx2 = idx1 + 1;
-    u_int64_t idx3 = idx1 + 2;
-    u_int64_t idx4 = idx1 + 3;
+__global__ void compute_alfa_sigma_uint8(u_int8_t **image, u_int8_t *mean, const u_int16_t numImages, const u_int64_t npixels, const float k, const u_int16_t s) {
+    const u_int64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
+    const u_int64_t idx2 = idx1 + 1;
+    const u_int64_t idx3 = idx1 + 2;
+    const u_int64_t idx4 = idx1 + 3;
 
     float std1, std2, std3, std4;
     u_int8_t part_mean1, part_mean2 , part_mean3, part_mean4;

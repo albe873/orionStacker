@@ -145,6 +145,8 @@ int main(int argc, char **argv) {
     cudaDeviceProp deviceProp;
     CHECK(cudaGetDeviceProperties(&deviceProp, dev)); // Ottiene le proprietà del dispositivo CUDA
     CHECK(cudaSetDevice(0)); // Seleziona il dispositivo CUDA
+    cudaMemLocation devLoc;
+    devLoc.type = cudaMemLocationTypeDevice;
 
     // Apre il file FITS
     fitsfile *fptr = nullptr;
@@ -164,20 +166,20 @@ int main(int argc, char **argv) {
 
     u_int16_t *gray_image = nullptr;
     CHECK(cudaMallocManaged(&gray_image, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(gray_image, npixels * sizeof(u_int16_t), dev));
+    CHECK(cudaMemPrefetchAsync(gray_image, npixels * sizeof(u_int16_t), devLoc, 0));
 
     u_int16_t *reduced_image = nullptr;
     if (threshold_algorithm == TR_FAST_ADAPTIVE) {
         CHECK(cudaMallocManaged(&reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t)));
-        CHECK(cudaMemPrefetchAsync(reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t), dev));
+        CHECK(cudaMemPrefetchAsync(reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t), devLoc, 0));
     }
 
     u_int16_t *threshold_image = nullptr;
     CHECK(cudaMallocManaged(&threshold_image, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(threshold_image, npixels * sizeof(u_int16_t), dev));
+    CHECK(cudaMemPrefetchAsync(threshold_image, npixels * sizeof(u_int16_t), devLoc, 0));
 
     get_fits_data(fptr, totpixels, fits_data);
-    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), dev));
+    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), devLoc, 0));
     
     // --- grid and block sizes ---
     // for u_int16_t images, for u_int8_t divide by 4 (instead of 2)

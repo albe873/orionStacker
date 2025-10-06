@@ -49,6 +49,8 @@ int main(int argc, char **argv) {
     cudaDeviceProp deviceProp;
     CHECK(cudaGetDeviceProperties(&deviceProp, dev));
     CHECK(cudaSetDevice(dev));
+    cudaMemLocation devLoc;
+    devLoc.type = cudaMemLocationTypeDevice;
 
     // Controlla file nella directory
     DIR *dir = opendir(in_dir);
@@ -116,12 +118,12 @@ int main(int argc, char **argv) {
         get_fits_data(fptr, npixels, gray_all + idx*npixels);
         fits_close_file(fptr,&status);
 
-        CHECK(cudaMemPrefetchAsync(gray_all + idx*npixels, npixels*sizeof(u_int16_t), dev));
+        CHECK(cudaMemPrefetchAsync(gray_all + idx*npixels, npixels*sizeof(u_int16_t), devLoc, 0));
         idx++;
     }
     closedir(dir);
 
-    CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(u_int16_t), dev));
+    CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(u_int16_t), devLoc, 0));
 
     // Esegui kernel
 

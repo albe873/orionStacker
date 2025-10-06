@@ -106,6 +106,8 @@ int main(int argc, char **argv) {
     cudaDeviceProp deviceProp;
     CHECK(cudaGetDeviceProperties(&deviceProp, dev)); // Ottiene le proprietà del dispositivo CUDA
     CHECK(cudaSetDevice(0)); // Seleziona il dispositivo CUDA
+    cudaMemLocation devLoc;
+    devLoc.type = cudaMemLocationTypeDevice;
 
     // Apertura della cartella
     remove_trailing_slash((char *)in_dir);
@@ -179,7 +181,7 @@ int main(int argc, char **argv) {
     }
 
     CHECK(cudaMallocManaged(&mean, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMemAdvise(mean, npixels * sizeof(u_int16_t), cudaMemAdviseSetPreferredLocation, dev));
+    CHECK(cudaMemAdvise(mean, npixels * sizeof(u_int16_t), cudaMemAdviseSetPreferredLocation, devLoc));
 
     // Lettura dei file .fits e caricamento dei dati in memoria (unificata)
 
@@ -206,7 +208,7 @@ int main(int argc, char **argv) {
                 }
 
                 get_fits_data(fptr, npixels, fits_data[image_count]);
-                CHECK(cudaMemPrefetchAsync(fits_data[image_count], npixels * sizeof(u_int16_t), dev));
+                CHECK(cudaMemPrefetchAsync(fits_data[image_count], npixels * sizeof(u_int16_t), devLoc, 0));
                 fits_close_file(fptr, &status);
                 image_count++;
             }

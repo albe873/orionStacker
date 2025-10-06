@@ -59,12 +59,10 @@ int main(int argc, char **argv) {
         {"window-size", optional_argument, 0, 'w'},
         {"max-star-size", optional_argument, 0, 'M'},
         {"min-star-size", optional_argument, 0, 'm'},
-        {"dx", optional_argument, 0, 'x'},
-        {"dy", optional_argument, 0, 'y'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:M:m:x:y:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:M:m:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'f':
                 filename = optarg;
@@ -130,22 +128,6 @@ int main(int argc, char **argv) {
                     min_star_size = num;
                 }
                 break;
-            case 'x':
-                num = strtol(optarg, &end, 10);
-                if (end == optarg) {
-                    fprintf(stderr, "Cannot convert debug x, using default\n");
-                } else {
-                    d_x = num;
-                }
-                break;
-            case 'y':
-                num = strtol(optarg, &end, 10);
-                if (end == optarg) {
-                    fprintf(stderr, "Cannot convert debug y, using default\n");
-                } else {
-                    d_y = num;
-                }
-                break;
             default:
                 fprintf(stderr, "Usage: %s --input-file <image.fits>\n", argv[0]);
                 return 1;
@@ -198,6 +180,7 @@ int main(int argc, char **argv) {
     CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), dev));
     
     // --- grid and block sizes ---
+    // for u_int16_t images, for u_int8_t divide by 4 (instead of 2)
     dim3 block_size_1d(256);
     dim3 grid_size_1d((npixels / 2 + block_size_1d.x - 1) / block_size_1d.x);
 
@@ -211,7 +194,7 @@ int main(int argc, char **argv) {
 
     // --- Convert to grayscale ---
     if (depth == 3) {
-        to_grayscale_fits<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
+        to_grayscale_planar_uint16<<<grid_size_1d, block_size_1d>>>(fits_data, gray_image, npixels);
         CHECK(cudaGetLastError());
         CHECK(cudaDeviceSynchronize());
     }
@@ -221,18 +204,18 @@ int main(int argc, char **argv) {
     // --- Apply thresholding ---
     switch (threshold_algorithm) {
         case TR_SIMPLE:
-            simple_threshold<<<grid_size_1d, block_size_1d>>>(gray_image, threshold_image, npixels, threshold);
+            simple_threshold_uint16<<<grid_size_1d, block_size_1d>>>(gray_image, threshold_image, npixels, threshold);
             CHECK(cudaGetLastError());
             break;
         case TR_ADAPTIVE:
-            adaptiveThresholdingKernel<<<grid_size_2d, block_size_2d>>>(gray_image, threshold_image, width, height, window_size, threshold);
+            adaptive_threshold_uint16<<<grid_size_2d, block_size_2d>>>(gray_image, threshold_image, width, height, window_size, threshold);
             CHECK(cudaGetLastError());
             break;
         case TR_FAST_ADAPTIVE:
-            reduce_image<<<grid_size_2d, block_size_2d>>>(gray_image, reduced_image, width, height, reduce_factor);
+            reduce_image_uint16<<<grid_size_2d, block_size_2d>>>(gray_image, reduced_image, width, height, reduce_factor);
             CHECK(cudaGetLastError());
             CHECK(cudaDeviceSynchronize());
-            adaptiveThresholdingApprossimative<<<grid_size_2d, block_size_2d>>>(
+            adaptive_threshold_approximate_uint16<<<grid_size_2d, block_size_2d>>>(
                 gray_image, threshold_image, width, height, reduced_image, reduce_factor, window_size, threshold);
             CHECK(cudaGetLastError());
             break;
@@ -242,26 +225,7 @@ int main(int argc, char **argv) {
 
     // --- Detect stars ---
 
-    //detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size);
-
-    u_int16_t sanity_check_array[49] = {
-        0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 2, 1, 0, 0,
-        0, 0, 1, 1, 1, 0, 0,
-        0, 0, 0, 1, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0,
-    };
-    for (int i = 0; i < 49; i++) {
-        //threshold_image[i] = sanity_check_array[i];
-    }
-
-    dim3 grid_size_2d_sanity(  (7 + block_size_2d.x - 1) / block_size_2d.x,
-                               (7 + block_size_2d.y - 1) / block_size_2d.y
-                            );
-
-    new_detect_stars<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size, min_star_size, d_x, height - d_y);
+    detect_stars_uint16<<<grid_size_2d, block_size_2d>>>(threshold_image, fits_data, width, height, max_star_size, min_star_size);
     CHECK(cudaGetLastError());
     CHECK(cudaDeviceSynchronize());
 

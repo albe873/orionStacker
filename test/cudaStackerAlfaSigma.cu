@@ -140,7 +140,7 @@ int main(int argc, char **argv) {
                     get_image_dimensions(fptr, &width, &height, &n_chan);
                     npixels = width * height * n_chan;
                     grid_size = (npixels / 2 + block_size.x - 1) / block_size.x;
-                    printf("grid_size: %d, tot %d, wasted %d\n", grid_size.x, grid_size.x * block_size.x, (grid_size.x * block_size.x) - npixels/2);
+                    printf("grid_size: %d, tot %d, wasted %lu\n", grid_size.x, grid_size.x * block_size.x, (grid_size.x * block_size.x) - npixels/2);
                 }
                 else {
                     get_image_dimensions(fptr, &new_width, &new_height, &new_n_chan);

@@ -12,6 +12,8 @@ using namespace cv::xfeatures2d;
 using std::cout;
 using std::endl;
 
+// https://github.com/opencv/opencv_contrib/blob/master/modules/xfeatures2d/src/stardetector.cpp
+
 const char* keys =
     "{ help h |                     | Print help message. }"
     "{ input1 | img1.png            | Path to input image 1. }"
@@ -45,15 +47,26 @@ int main( int argc, char* argv[] ) {
     normalize(img1_gray, img1, 0, 255, NORM_MINMAX, CV_8U);
     normalize(img2_gray, img2, 0, 255, NORM_MINMAX, CV_8U);
 
-    //-- Step 1: Detect the keypoints using AKAZE Detector, compute the descriptors
-    Ptr<AKAZE> detector = AKAZE::create();
+    //-- Step 1: Detect the keypoints using StarDetector, compute the descriptors
+    Ptr<StarDetector> detector = StarDetector::create();
     std::vector<KeyPoint> keypoints1, keypoints2;
-    Mat descriptors1, descriptors2;
-    detector->detectAndCompute( img1, noArray(), keypoints1, descriptors1 );
-    detector->detectAndCompute( img2, noArray(), keypoints2, descriptors2 );
+    detector->detect(img1, keypoints1);
+    detector->detect(img2, keypoints2);
 
-    //-- Step 2: Matching descriptor vectors with a brute-force matcher
-    Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::BRUTEFORCE_HAMMING);
+    // Draw keypoints
+    Mat img_keypoints1;
+    drawKeypoints(img1, keypoints1, img_keypoints1, Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+    imshow("Keypoints Image 1", img_keypoints1);
+    waitKey(0);
+
+    //-- Step 2: Calculate descriptors (feature vectors) using SIFT
+    Ptr<SIFT> extractor = SIFT::create();
+    Mat descriptors1, descriptors2;
+    extractor->compute(img1, keypoints1, descriptors1);
+    extractor->compute(img2, keypoints2, descriptors2);
+
+    //-- Step 3: Matching descriptor vectors with a FLANN based matcher
+    Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);
     std::vector< std::vector<DMatch> > knn_matches;
     matcher->knnMatch( descriptors1, descriptors2, knn_matches, 2 );
 
@@ -68,7 +81,7 @@ int main( int argc, char* argv[] ) {
         }
     }
 
-    //-- Step 3: Find Homography to filter out outliers
+    //-- Step 4: Find Homography to filter out outliers
     if (good_matches.size() < 4)
     {
         cout << "Not enough good matches to find homography." << endl;

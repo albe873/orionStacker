@@ -50,6 +50,7 @@ int main(int argc, char **argv) {
     CHECK(cudaGetDeviceProperties(&deviceProp, dev));
     CHECK(cudaSetDevice(dev));
     cudaMemLocation devLoc;
+    devLoc.id = dev;
     devLoc.type = cudaMemLocationTypeDevice;
 
     // Controlla file nella directory

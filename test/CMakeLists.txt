@@ -4,6 +4,12 @@ if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
     target_link_libraries(cudaDebayerTest   common debayer cfitsio m)
 endif()
 
+# calibration
+if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
+    add_cuda_hip_executable(cudaCalibration cudaCalibration.cu)
+    target_link_libraries(cudaCalibration   common calibration cfitsio m)
+endif()
+
 # Stacker
 add_executable(CPUStackerAlfaSigma CPUStackerAlfaSigma.c)
 target_link_libraries(CPUStackerAlfaSigma   common stacker cfitsio m)

@@ -9,6 +9,11 @@
 #include <ctime>
 #include <getopt.h>
 
+/*  --- NVCC compiler for NVIDIA CUDA -
+--  to compile for cuda, use the following command
+    make -C build                                       (to do in /orionStacker)
+*/
+
 double cpuSecond() {
     struct timespec ts;
     timespec_get(&ts, TIME_UTC);

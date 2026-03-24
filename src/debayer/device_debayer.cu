@@ -149,7 +149,7 @@ void demosaic_bilinear_rggb(const u_int16_t *gray_all, u_int16_t *rgb_all, long 
     u_int64_t npixels = width*height;
     dim3 block_size(512);
     dim3 grid_size((npixels*image_count + block_size.x - 1)/block_size.x);
-    demosaic_mhc_rggb_kernel<<<grid_size, block_size>>>(gray_all, rgb_all, width, height, image_count);
+    demosaic_bilinear_rggb_kernel<<<grid_size, block_size>>>(gray_all, rgb_all, width, height, image_count);
     CHECK(cudaDeviceSynchronize());
 }
 

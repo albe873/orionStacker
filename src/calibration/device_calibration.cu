@@ -51,6 +51,17 @@ __global__ void meanSubtract_kernel(u_int16_t **images, u_int16_t *bias, u_int16
     result[idx_global] = (c > 0) ? acc / c : 0;
 }
 
+__global__ void calibrateLights_kernel(u_int16_t **light_images, u_int16_t *master_bias, u_int16_t *master_dark, u_int16_t *master_flat, u_int16_t *calib_all, long npixels, int light_count) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= light_count * npixels) return;
+    int img = i / npixels;
+    int p = i % npixels;
+    int val = (int)light_images[img][p] - (int)master_bias[p] - (int)master_dark[p];
+    if (val < 0) val = 0;
+    const int flat = master_flat[p];
+    calib_all[i] = (flat > 0) ? (u_int16_t)(val / flat) : 0;
+}
+
 void masterBias(u_int16_t *bias_all, u_int16_t *master_bias, long width, long height, int bias_count) {
     u_int64_t npixels = (u_int64_t)width * (u_int64_t)height;
     
@@ -140,6 +151,31 @@ void masterFlat(u_int16_t *flat_all, u_int16_t *master_bias, u_int16_t *master_f
     free(flat_images_host);
 }
 
+__global__ void calibrateLights_kernel(u_int16_t **light_images,
+                                       u_int16_t *master_bias,
+                                       u_int16_t *master_dark,
+                                       u_int16_t *master_flat,
+                                       u_int16_t *calib_all,
+                                       u_int64_t npixels,
+                                       int light_count) {
+    u_int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    u_int64_t total = (u_int64_t)light_count * npixels;
+    if (idx >= total) return;
+
+    u_int64_t pixel = idx % npixels;
+    u_int64_t img_idx = idx / npixels;
+
+    int val = (int)light_images[img_idx][pixel] - (int)master_bias[pixel] - (int)master_dark[pixel];
+    if (val < 0) val = 0;
+
+    u_int16_t flat = master_flat[pixel];
+    if (flat > 0) {
+        calib_all[idx] = (u_int16_t)(val / flat);
+    } else {
+        calib_all[idx] = 0;
+    }
+}
+
 void calibrateLights(u_int16_t *light_all, u_int16_t *master_bias, u_int16_t *master_dark, u_int16_t *master_flat, u_int16_t *calib_all, long width, long height, int light_count) {
     // Implementazione simile a masterDark, ma con sottrazione del master bias e del master dark,
     // e divisione per il master flat
@@ -157,19 +193,10 @@ void calibrateLights(u_int16_t *light_all, u_int16_t *master_bias, u_int16_t *ma
     CHECK(cudaMalloc(&light_images_device, light_count * sizeof(u_int16_t *)));
     CHECK(cudaMemcpy(light_images_device, light_images_host, light_count * sizeof(u_int16_t *), cudaMemcpyHostToDevice));
 
-    // Kernel per calibrazione delle immagini light
     dim3 block_size(512);
-    dim3 grid_size((npixels + block_size.x - 1)/block_size.x);
-    meanSubtract_kernel<<<grid_size, block_size>>>(light_images_device, master_bias, calib_all, width, height, light_count);
+    dim3 grid_size(((u_int64_t)light_count * npixels + block_size.x - 1)/block_size.x);
+    calibrateLights_kernel<<<grid_size, block_size>>>(light_images_device, master_bias, master_dark, master_flat, calib_all, npixels, light_count);
     CHECK(cudaDeviceSynchronize());
-
-    //meanSubtract_kernel<<<grid_size, block_size>>>(light_images_device, master_dark, calib_all, width, height, light_count);
-    //CHECK(cudaDeviceSynchronize());
-
-    // Divisione per il master flat
-    for (u_int64_t i = 0; i < npixels; i++) {
-        calib_all[i] = (master_flat[i] > 0) ? calib_all[i] / master_flat[i] : 0;
-    }
 
     CHECK(cudaFree(light_images_device));
     free(light_images_host);

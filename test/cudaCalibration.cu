@@ -94,10 +94,6 @@ int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long npixels
 int main(int argc, char **argv) {
     const char *in_dir = NULL, *bias_dir = NULL, *dark_dir = NULL, *flat_dir = NULL;
     const char *out_dir = ".";
-    const char *bias_name = "MasterBias";
-    const char *dark_name = "MasterDark";
-    const char *flat_name = "MasterFlat";
-    const char *calib_name = "calibrated";
 
     int opt, option_index = 0;
     static struct option long_options[] = {
@@ -141,6 +137,7 @@ int main(int argc, char **argv) {
     devLoc.id = dev;
     devLoc.type = cudaMemLocationTypeDevice;
 
+    /************************************************** 1) MASTER BIAS **************************************************/
     // Controlla file nella directory bias (ritorna numero di immagini e dimensioni)
     long bias_width=0, bias_height=0, bias_n_chan=0;
     int bias_count=0;
@@ -151,7 +148,7 @@ int main(int argc, char **argv) {
 
     u_int64_t bias_pixels = bias_width*bias_height;
 
-    // Alloca memoria per unico MasterBias
+    // Alloca memoria bias
     u_int16_t *bias_all = nullptr;
     CHECK(cudaMallocManaged(&bias_all, bias_pixels*bias_count*sizeof(u_int16_t)));
 
@@ -177,10 +174,125 @@ int main(int argc, char **argv) {
     snprintf(base_name, sizeof(base_name), "master_bias");
     save_image_fits(out_dir, base_name, master_bias, bias_width, bias_height, 1);
 
+    /************************************************** 2) MASTER DARK **************************************************/
+    // controlla file nella directory dark (ritorna numero di immagini e dimensioni)
+    long dark_width=0, dark_height=0, dark_n_chan=0;
+    int dark_count=0;
+    if (check_directory(dark_dir, &dark_count, &dark_width, &dark_height, &dark_n_chan) != 0) {
+        fprintf(stderr, "Error checking dark directory\n");
+        return 1;
+    }
+
+    u_int64_t dark_pixels = dark_width*dark_height;
+
+    // Alloca memoria per dark
+    u_int16_t *dark_all = nullptr;
+    CHECK(cudaMallocManaged(&dark_all, dark_pixels*dark_count*sizeof(u_int16_t)));
+
+    // Rileggi le immagini dark e copia in memoria chiamando funzione esterna
+    if (load_images_to_memory(dark_dir, dark_all, dark_pixels, dark_count, devLoc) != 0) {
+        fprintf(stderr, "Error loading dark images\n");
+        return 1;
+    }
+
+    // Alloca memoria per master dark finale (1 immagine)
+    u_int16_t *master_dark = nullptr;
+    CHECK(cudaMallocManaged(&master_dark, dark_pixels*sizeof(u_int16_t)));
+    CHECK(cudaMemPrefetchAsync(master_dark, dark_pixels*sizeof(u_int16_t), devLoc, 0));
+
+    //calcola master dark
+    t_start = cpuSecond();
+    masterDark(dark_all, master_bias, master_dark, dark_width, dark_height, dark_count);
+    t_elapsed = cpuSecond()-t_start;
+    printf("GPU master dark time: %f s\n", t_elapsed);
+
+    // Salva master dark su FITS
+    snprintf(base_name, sizeof(base_name), "master_dark");
+    save_image_fits(out_dir, base_name, master_dark, dark_width, dark_height, 1);
+
+    /************************************************** 3) MASTER FLAT **************************************************/
+    // controlla file nella directory flat (ritorna numero di immagini e dimensioni)
+    long flat_width=0, flat_height=0, flat_n_chan=0;
+    int flat_count=0;
+    if (check_directory(flat_dir, &flat_count, &flat_width, &flat_height, &flat_n_chan) != 0) {
+        fprintf(stderr, "Error checking flat directory\n");
+        return 1;
+    }
+
+    u_int64_t flat_pixels = flat_width*flat_height;
+
+    // Alloca memoria per flat
+    u_int16_t *flat_all = nullptr;
+    CHECK(cudaMallocManaged(&flat_all, flat_pixels*flat_count*sizeof(u_int16_t)));
+
+    // Rileggi le immagini flat e copia in memoria chiamando funzione esterna
+    if (load_images_to_memory(flat_dir, flat_all, flat_pixels, flat_count, devLoc) != 0) {
+        fprintf(stderr, "Error loading flat images\n");
+        return 1;
+    }
+
+    // Alloca memoria per master flat finale (1 immagine)
+    u_int16_t *master_flat = nullptr;
+    CHECK(cudaMallocManaged(&master_flat, flat_pixels*sizeof(u_int16_t)));
+    CHECK(cudaMemPrefetchAsync(master_flat, flat_pixels*sizeof(u_int16_t), devLoc, 0));
+
+    //calcola master flat
+    t_start = cpuSecond();
+    masterFlat(flat_all, master_bias, master_flat, flat_width, flat_height, flat_count);
+    t_elapsed = cpuSecond()-t_start;
+    printf("GPU master flat time: %f s\n", t_elapsed);
+
+    // Salva master flat su FITS
+    snprintf(base_name, sizeof(base_name), "master_flat");
+    save_image_fits(out_dir, base_name, master_flat, flat_width, flat_height, 1);
+
+    /************************************************** 4) CALIBRATED LIGHT **************************************************/
+    // controlla file nella directory light (ritorna numero di immagini e dimensioni)
+    long light_width=0, light_height=0, light_n_chan=0;
+    int light_count=0;
+    if (check_directory(in_dir, &light_count, &light_width, &light_height, &light_n_chan) != 0) {
+        fprintf(stderr, "Error checking light directory\n");
+        return 1;
+    }
+
+    u_int64_t light_pixels = light_width*light_height;
+
+    // Alloca memoria per light
+    u_int16_t *light_all = nullptr;
+    CHECK(cudaMallocManaged(&light_all, light_pixels*light_count*sizeof(u_int16_t)));
+
+    // Rileggi le immagini light e copia in memoria chiamando funzione esterna
+    if (load_images_to_memory(in_dir, light_all, light_pixels, light_count, devLoc) != 0) {
+        fprintf(stderr, "Error loading light images\n");
+        return 1;
+    }
+
+    // Alloca memoria per immagini calibrate finali (light_count immagini)
+    u_int16_t *calib_all = nullptr;
+    CHECK(cudaMallocManaged(&calib_all, light_pixels*light_count*sizeof(u_int16_t)));
+    CHECK(cudaMemPrefetchAsync(calib_all, light_pixels*light_count*sizeof(u_int16_t), devLoc, 0));
+
+    //calibra immagini light
+    t_start = cpuSecond();
+    calibrateLights(light_all, master_bias, master_dark, master_flat, calib_all, light_width, light_height, light_count);
+    t_elapsed = cpuSecond()-t_start;
+    printf("GPU calibrate lights time: %f s\n", t_elapsed);
+
+    // Salva immagini calibrate su FITS
+    for (int i = 0; i < light_count; i++) {
+        snprintf(base_name, sizeof(base_name), "calibrated_%d", i);
+        save_image_fits(out_dir, base_name, calib_all + i*light_pixels, light_width, light_height, 1);
+    }
 
     // Libera memoria
     CHECK(cudaFree(bias_all));
     CHECK(cudaFree(master_bias));
+    CHECK(cudaFree(dark_all));
+    CHECK(cudaFree(master_dark));
+    CHECK(cudaFree(flat_all));
+    CHECK(cudaFree(master_flat));
+    CHECK(cudaFree(light_all));
+    CHECK(cudaFree(calib_all));
     CHECK(cudaDeviceReset());
 
     return 0;

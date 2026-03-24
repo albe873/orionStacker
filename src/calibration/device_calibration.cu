@@ -32,6 +32,25 @@ __global__ void masterBias_kernel(u_int16_t **bias_images, u_int16_t *master_bia
     computeMean2_uint16(bias_images, master_bias, idx_global, idx_global, bias_count);
 }
 
+__global__ void meanSubtract_kernel(u_int16_t **images, u_int16_t *bias, u_int16_t *result, long width, long height, int count) {
+    u_int64_t idx_global = blockIdx.x * blockDim.x + threadIdx.x;
+    u_int64_t npixels = width * height;
+
+    if (idx_global >= npixels) return;
+
+    // Per ogni pixel, sottrai il master bias e poi calcola la media escludendo i valori <= 0
+    u_int16_t c = 0;
+    u_int32_t acc = 0;
+    for (int i = 0; i < count; i++) {
+        int val = (int)images[i][idx_global] - (int)bias[idx_global];
+        if (val > 0) {
+            c++;
+            acc += val;
+        }
+    }
+    result[idx_global] = (c > 0) ? acc / c : 0;
+}
+
 void masterBias(u_int16_t *bias_all, u_int16_t *master_bias, long width, long height, int bias_count) {
     u_int64_t npixels = (u_int64_t)width * (u_int64_t)height;
     
@@ -53,4 +72,105 @@ void masterBias(u_int16_t *bias_all, u_int16_t *master_bias, long width, long he
     
     CHECK(cudaFree(bias_images_device));
     free(bias_images_host);
+}
+
+void masterDark(u_int16_t *dark_all, u_int16_t *master_bias, u_int16_t *master_dark, long width, long height, int dark_count) {
+    // Implementazione simile a masterBias, ma con sottrazione del master bias
+    // e calcolo della media per ogni pixel
+
+    // sottrarre a ogni pixel di ogni immagine dark il corrispondente pixel del master bias con kernel
+    u_int64_t npixels = (u_int64_t)width * (u_int64_t)height;
+    // Allocate and prepare dark image pointers on host
+    u_int16_t **dark_images_host = (u_int16_t **)malloc(dark_count * sizeof(u_int16_t *));
+    for (int i = 0; i < dark_count; i++) {
+        dark_images_host[i] = dark_all + i * npixels;
+    }
+
+    // Copy pointers to device
+    u_int16_t **dark_images_device;
+    CHECK(cudaMalloc(&dark_images_device, dark_count * sizeof(u_int16_t *)));
+    CHECK(cudaMemcpy(dark_images_device, dark_images_host, dark_count * sizeof(u_int16_t *), cudaMemcpyHostToDevice));
+
+    // Kernel per sottrazione del master bias e calcolo della media
+    dim3 block_size(512);
+    dim3 grid_size((npixels + block_size.x - 1)/block_size.x);
+    meanSubtract_kernel<<<grid_size, block_size>>>(dark_images_device, master_bias, master_dark, width, height, dark_count);
+    CHECK(cudaDeviceSynchronize());
+
+    CHECK(cudaFree(dark_images_device));
+    free(dark_images_host);
+}
+
+void masterFlat(u_int16_t *flat_all, u_int16_t *master_bias, u_int16_t *master_flat, long width, long height, int flat_count) {
+    // Sottrazione del master bias e divisione per il master flat
+
+    // sottrarre a ogni pixel di ogni immagine flat il corrispondente pixel del master bias con kernel
+    u_int64_t npixels = (u_int64_t)width * (u_int64_t)height;
+    // Allocate and prepare flat image pointers on host
+    u_int16_t **flat_images_host = (u_int16_t **)malloc(flat_count * sizeof(u_int16_t *));
+    for (int i = 0; i < flat_count; i++) {
+        flat_images_host[i] = flat_all + i * npixels;
+    }
+
+    // Copy pointers to device
+    u_int16_t **flat_images_device;
+    CHECK(cudaMalloc(&flat_images_device, flat_count * sizeof(u_int16_t *)));
+    CHECK(cudaMemcpy(flat_images_device, flat_images_host, flat_count * sizeof(u_int16_t *), cudaMemcpyHostToDevice));
+
+    // Kernel per sottrazione del master bias e calcolo della media
+    dim3 block_size(512);
+    dim3 grid_size((npixels + block_size.x - 1)/block_size.x);
+    meanSubtract_kernel<<<grid_size, block_size>>>(flat_images_device, master_bias, master_flat, width, height, flat_count);
+    CHECK(cudaDeviceSynchronize());
+
+    // Normalizzazione del master flat (dividere ogni pixel per il valore medio del master flat)
+    // Calcolo del valore medio del master flat
+    u_int64_t sum = 0;
+    for (u_int64_t i = 0; i < npixels; i++) {
+        sum += master_flat[i];
+    }
+    u_int64_t mean = (sum > 0) ? sum / npixels : 0;
+
+    // Normalizzazione del master flat
+    for (u_int64_t i = 0; i < npixels; i++) {
+        master_flat[i] = (mean > 0) ? master_flat[i] / mean : 0;
+    }
+
+    CHECK(cudaFree(flat_images_device));
+    free(flat_images_host);
+}
+
+void calibrateLights(u_int16_t *light_all, u_int16_t *master_bias, u_int16_t *master_dark, u_int16_t *master_flat, u_int16_t *calib_all, long width, long height, int light_count) {
+    // Implementazione simile a masterDark, ma con sottrazione del master bias e del master dark,
+    // e divisione per il master flat
+    // Per ogni pixel di ogni immagine light: calibrazione = (light - master_bias - master_dark) / master_flat
+
+    u_int64_t npixels = (u_int64_t)width * (u_int64_t)height;
+    // Allocate and prepare light image pointers on host
+    u_int16_t **light_images_host = (u_int16_t **)malloc(light_count * sizeof(u_int16_t *));
+    for (int i = 0; i < light_count; i++) {
+        light_images_host[i] = light_all + i * npixels;
+    }
+
+    // Copy pointers to device
+    u_int16_t **light_images_device;
+    CHECK(cudaMalloc(&light_images_device, light_count * sizeof(u_int16_t *)));
+    CHECK(cudaMemcpy(light_images_device, light_images_host, light_count * sizeof(u_int16_t *), cudaMemcpyHostToDevice));
+
+    // Kernel per calibrazione delle immagini light
+    dim3 block_size(512);
+    dim3 grid_size((npixels + block_size.x - 1)/block_size.x);
+    meanSubtract_kernel<<<grid_size, block_size>>>(light_images_device, master_bias, calib_all, width, height, light_count);
+    CHECK(cudaDeviceSynchronize());
+
+    //meanSubtract_kernel<<<grid_size, block_size>>>(light_images_device, master_dark, calib_all, width, height, light_count);
+    //CHECK(cudaDeviceSynchronize());
+
+    // Divisione per il master flat
+    for (u_int64_t i = 0; i < npixels; i++) {
+        calib_all[i] = (master_flat[i] > 0) ? calib_all[i] / master_flat[i] : 0;
+    }
+
+    CHECK(cudaFree(light_images_device));
+    free(light_images_host);
 }

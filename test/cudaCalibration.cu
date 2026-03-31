@@ -65,7 +65,7 @@ int check_directory(const char *dir_path, int *count, long *width, long *height,
 }
 
 // Rileggi le immagini e copia in memoria chiamando funzione esterna
-int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long npixels, int count, cudaMemLocation devLoc) {
+int load_images_to_memory(const char *dir_path, float *img_all, long npixels, int count, cudaMemLocation devLoc) {
     DIR *dir = opendir(dir_path);
     if (!dir) { perror("opendir"); return 1; }
 
@@ -81,10 +81,15 @@ int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long npixels
 
         fitsfile *fptr = nullptr;
         open_fits(path, &fptr);
-        get_fits_data(fptr, npixels, img_all + idx*npixels);
+        u_int16_t *temp = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        get_fits_data(fptr, npixels, temp);
+        for (long i = 0; i < npixels; i++) {
+            img_all[idx * npixels + i] = (float)temp[i];
+        }
+        free(temp);
         fits_close_file(fptr,&status);
 
-        CHECK(cudaMemPrefetchAsync(img_all + idx*npixels, npixels*sizeof(u_int16_t), devLoc, 0));
+        CHECK(cudaMemPrefetchAsync(img_all + idx*npixels, npixels*sizeof(float), devLoc, 0));
         idx++;
     }
     closedir(dir);
@@ -149,8 +154,8 @@ int main(int argc, char **argv) {
     u_int64_t bias_pixels = bias_width*bias_height;
 
     // Alloca memoria bias
-    u_int16_t *bias_all = nullptr;
-    CHECK(cudaMallocManaged(&bias_all, bias_pixels*bias_count*sizeof(u_int16_t)));
+    float *bias_all = nullptr;
+    CHECK(cudaMallocManaged(&bias_all, bias_pixels*bias_count*sizeof(float)));
 
     // Rileggi le immagini bias e copia in memoria chiamando funzione esterna
     if (load_images_to_memory(bias_dir, bias_all, bias_pixels, bias_count, devLoc) != 0) {
@@ -159,9 +164,9 @@ int main(int argc, char **argv) {
     }
 
     // Alloca memoria per master bias finale (1 immagine)
-    u_int16_t *master_bias = nullptr;
-    CHECK(cudaMallocManaged(&master_bias, bias_pixels*sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(master_bias, bias_pixels*sizeof(u_int16_t), devLoc, 0));
+    float *master_bias = nullptr;
+    CHECK(cudaMallocManaged(&master_bias, bias_pixels*sizeof(float)));
+    CHECK(cudaMemPrefetchAsync(master_bias, bias_pixels*sizeof(float), devLoc, 0));
 
     // Calcola master bias
     double t_start = cpuSecond();
@@ -172,7 +177,12 @@ int main(int argc, char **argv) {
     // Salva master bias su FITS
     char base_name[128];
     snprintf(base_name, sizeof(base_name), "master_bias");
-    save_image_fits(out_dir, base_name, master_bias, bias_width, bias_height, 1);
+    u_int16_t *temp_bias = (u_int16_t*)malloc(bias_pixels * sizeof(u_int16_t));
+    for (u_int64_t i = 0; i < bias_pixels; i++) {
+        temp_bias[i] = (u_int16_t)fminf(fmaxf(master_bias[i], 0.0f), 65535.0f);
+    }
+    save_image_fits(out_dir, base_name, temp_bias, bias_width, bias_height, 1);
+    free(temp_bias);
 
     /************************************************** 2) MASTER DARK **************************************************/
     // controlla file nella directory dark (ritorna numero di immagini e dimensioni)
@@ -186,8 +196,8 @@ int main(int argc, char **argv) {
     u_int64_t dark_pixels = dark_width*dark_height;
 
     // Alloca memoria per dark
-    u_int16_t *dark_all = nullptr;
-    CHECK(cudaMallocManaged(&dark_all, dark_pixels*dark_count*sizeof(u_int16_t)));
+    float *dark_all = nullptr;
+    CHECK(cudaMallocManaged(&dark_all, dark_pixels*dark_count*sizeof(float)));
 
     // Rileggi le immagini dark e copia in memoria chiamando funzione esterna
     if (load_images_to_memory(dark_dir, dark_all, dark_pixels, dark_count, devLoc) != 0) {
@@ -196,9 +206,9 @@ int main(int argc, char **argv) {
     }
 
     // Alloca memoria per master dark finale (1 immagine)
-    u_int16_t *master_dark = nullptr;
-    CHECK(cudaMallocManaged(&master_dark, dark_pixels*sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(master_dark, dark_pixels*sizeof(u_int16_t), devLoc, 0));
+    float *master_dark = nullptr;
+    CHECK(cudaMallocManaged(&master_dark, dark_pixels*sizeof(float)));
+    CHECK(cudaMemPrefetchAsync(master_dark, dark_pixels*sizeof(float), devLoc, 0));
 
     //calcola master dark
     t_start = cpuSecond();
@@ -208,7 +218,12 @@ int main(int argc, char **argv) {
 
     // Salva master dark su FITS
     snprintf(base_name, sizeof(base_name), "master_dark");
-    save_image_fits(out_dir, base_name, master_dark, dark_width, dark_height, 1);
+    u_int16_t *temp_dark = (u_int16_t*)malloc(dark_pixels * sizeof(u_int16_t));
+    for (u_int64_t i = 0; i < dark_pixels; i++) {
+        temp_dark[i] = (u_int16_t)fminf(fmaxf(master_dark[i], 0.0f), 65535.0f);
+    }
+    save_image_fits(out_dir, base_name, temp_dark, dark_width, dark_height, 1);
+    free(temp_dark);
 
     /************************************************** 3) MASTER FLAT **************************************************/
     // controlla file nella directory flat (ritorna numero di immagini e dimensioni)
@@ -222,8 +237,8 @@ int main(int argc, char **argv) {
     u_int64_t flat_pixels = flat_width*flat_height;
 
     // Alloca memoria per flat
-    u_int16_t *flat_all = nullptr;
-    CHECK(cudaMallocManaged(&flat_all, flat_pixels*flat_count*sizeof(u_int16_t)));
+    float *flat_all = nullptr;
+    CHECK(cudaMallocManaged(&flat_all, flat_pixels*flat_count*sizeof(float)));
 
     // Rileggi le immagini flat e copia in memoria chiamando funzione esterna
     if (load_images_to_memory(flat_dir, flat_all, flat_pixels, flat_count, devLoc) != 0) {
@@ -232,9 +247,9 @@ int main(int argc, char **argv) {
     }
 
     // Alloca memoria per master flat finale (1 immagine)
-    u_int16_t *master_flat = nullptr;
-    CHECK(cudaMallocManaged(&master_flat, flat_pixels*sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(master_flat, flat_pixels*sizeof(u_int16_t), devLoc, 0));
+    float *master_flat = nullptr;
+    CHECK(cudaMallocManaged(&master_flat, flat_pixels*sizeof(float)));
+    CHECK(cudaMemPrefetchAsync(master_flat, flat_pixels*sizeof(float), devLoc, 0));
 
     //calcola master flat
     t_start = cpuSecond();
@@ -244,7 +259,12 @@ int main(int argc, char **argv) {
 
     // Salva master flat su FITS
     snprintf(base_name, sizeof(base_name), "master_flat");
-    save_image_fits(out_dir, base_name, master_flat, flat_width, flat_height, 1);
+    u_int16_t *temp_flat = (u_int16_t*)malloc(flat_pixels * sizeof(u_int16_t));
+    for (u_int64_t i = 0; i < flat_pixels; i++) {
+        temp_flat[i] = (u_int16_t)fminf(fmaxf(master_flat[i], 0.0f), 65535.0f);
+    }
+    save_image_fits(out_dir, base_name, temp_flat, flat_width, flat_height, 1);
+    free(temp_flat);
 
     /************************************************** 4) CALIBRATED LIGHT **************************************************/
     // controlla file nella directory light (ritorna numero di immagini e dimensioni)
@@ -258,8 +278,8 @@ int main(int argc, char **argv) {
     u_int64_t light_pixels = light_width*light_height;
 
     // Alloca memoria per light
-    u_int16_t *light_all = nullptr;
-    CHECK(cudaMallocManaged(&light_all, light_pixels*light_count*sizeof(u_int16_t)));
+    float *light_all = nullptr;
+    CHECK(cudaMallocManaged(&light_all, light_pixels*light_count*sizeof(float)));
 
     // Rileggi le immagini light e copia in memoria chiamando funzione esterna
     if (load_images_to_memory(in_dir, light_all, light_pixels, light_count, devLoc) != 0) {
@@ -268,9 +288,9 @@ int main(int argc, char **argv) {
     }
 
     // Alloca memoria per immagini calibrate finali (light_count immagini)
-    u_int16_t *calib_all = nullptr;
-    CHECK(cudaMallocManaged(&calib_all, light_pixels*light_count*sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(calib_all, light_pixels*light_count*sizeof(u_int16_t), devLoc, 0));
+    float *calib_all = nullptr;
+    CHECK(cudaMallocManaged(&calib_all, light_pixels*light_count*sizeof(float)));
+    CHECK(cudaMemPrefetchAsync(calib_all, light_pixels*light_count*sizeof(float), devLoc, 0));
 
     //calibra immagini light
     t_start = cpuSecond();
@@ -281,7 +301,12 @@ int main(int argc, char **argv) {
     // Salva immagini calibrate su FITS
     for (int i = 0; i < light_count; i++) {
         snprintf(base_name, sizeof(base_name), "calibrated_%d", i);
-        save_image_fits(out_dir, base_name, calib_all + i*light_pixels, light_width, light_height, 1);
+        u_int16_t *temp_calib = (u_int16_t*)malloc(light_pixels * sizeof(u_int16_t));
+        for (u_int64_t j = 0; j < light_pixels; j++) {
+            temp_calib[j] = (u_int16_t)fminf(fmaxf(calib_all[i*light_pixels + j], 0.0f), 65535.0f);
+        }
+        save_image_fits(out_dir, base_name, temp_calib, light_width, light_height, 1);
+        free(temp_calib);
     }
 
     // Libera memoria

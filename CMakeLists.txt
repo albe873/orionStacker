@@ -1,6 +1,14 @@
+cmake_minimum_required(VERSION 3.28)
+
 project(cuda_stacker)
 
-cmake_minimum_required(VERSION 3.28)
+# Default to Release to avoid unoptimized GPU builds when CMAKE_BUILD_TYPE is omitted.
+if (NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui features2d calib3d videoio flann)
 
 find_package(CUDAToolkit)
 
@@ -34,6 +42,7 @@ if (CUDAToolkit_FOUND)
         message(STATUS "Compiling with ROCM support")
     else()
         enable_language(CUDA)
+        set(CMAKE_CUDA_ARCHITECTURES 60 61 62 70 72 75 80 86 87 89 90)
         message(STATUS "Compiling with CUDA support")
     endif()
 else()
@@ -42,18 +51,41 @@ endif()
 
 
 function(add_cuda_hip_executable target_name cuda_source)
+    set(extra_includes "")
+    set(extra_include_dirs "")
+    foreach(arg IN LISTS ARGN)
+        list(APPEND extra_include_dirs ${arg})
+        list(APPEND extra_includes "-I${arg}")
+    endforeach()
+
+    # Inherit include directories from the caller directory.
+    get_directory_property(_caller_include_dirs INCLUDE_DIRECTORIES)
+    foreach(inc_dir IN LISTS _caller_include_dirs)
+        list(APPEND extra_include_dirs ${inc_dir})
+        list(APPEND extra_includes "-I${inc_dir}")
+    endforeach()
+
+    # Auto-propagate OpenCV includes when available in the caller scope.
+    if (DEFINED OpenCV_INCLUDE_DIRS)
+        foreach(cv_inc IN LISTS OpenCV_INCLUDE_DIRS)
+            list(APPEND extra_include_dirs ${cv_inc})
+            list(APPEND extra_includes "-I${cv_inc}")
+        endforeach()
+    endif()
+
     if(ROCM)
         # Hipify the CUDA file
         set(HIPIFIED_FILE ${CMAKE_CURRENT_BINARY_DIR}/${target_name}.hip)
         add_custom_command(
             OUTPUT ${HIPIFIED_FILE}
-            COMMAND hipify-clang ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source} -o ${HIPIFIED_FILE} --cuda-path ${CUDAToolkit_LIBRARY_ROOT} 
-                    -I${CMAKE_SOURCE_DIR}/src 
-                    -I${CMAKE_SOURCE_DIR}/src/common 
-                    -I${CMAKE_SOURCE_DIR}/src/debayer 
+            COMMAND hipify-clang ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source} -o ${HIPIFIED_FILE}
+                    ${_HIPIFY_CUDA_PATH_ARG}
+                    -I${CMAKE_SOURCE_DIR}/src/common/include
                     -I${CMAKE_SOURCE_DIR}/src/debayer/include
+                    -I${CMAKE_SOURCE_DIR}/src/calibration/include
                     -I${CMAKE_SOURCE_DIR}/src/stacker 
                     -I${CMAKE_SOURCE_DIR}/src/star_finder
+                    ${extra_includes}
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source}
             COMMENT "Hipifying ${cuda_source}"
         )
@@ -64,19 +96,33 @@ function(add_cuda_hip_executable target_name cuda_source)
         target_include_directories(${target_name} PRIVATE 
             ${CMAKE_CURRENT_SOURCE_DIR}  # For local headers like device_alfa_sigma.h
             ${CMAKE_SOURCE_DIR}/src      # For common headers like ../common/fits_api.h
+            ${extra_include_dirs}
         )
     else()
         add_executable(${target_name} ${cuda_source})
+        target_include_directories(${target_name} PRIVATE
+            ${extra_include_dirs}
+        )
     endif()
 endfunction()
 
 function(add_cuda_hip_library target_name cuda_source)
+    set(extra_includes "")
+    get_directory_property(_caller_include_dirs INCLUDE_DIRECTORIES)
+    foreach(inc_dir IN LISTS _caller_include_dirs)
+        list(APPEND extra_includes "-I${inc_dir}")
+    endforeach()
+
     if(ROCM)
         # Hipify the CUDA file
         set(HIPIFIED_FILE ${CMAKE_CURRENT_BINARY_DIR}/${target_name}.hip)
         add_custom_command(
             OUTPUT ${HIPIFIED_FILE}
-            COMMAND hipify-clang ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source} -o ${HIPIFIED_FILE} --cuda-path ${CUDAToolkit_LIBRARY_ROOT} -I${CMAKE_SOURCE_DIR}/src
+            COMMAND hipify-clang ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source} -o ${HIPIFIED_FILE}
+                    ${_HIPIFY_CUDA_PATH_ARG}
+                    -I${CMAKE_SOURCE_DIR}/src 
+                    -I${CMAKE_SOURCE_DIR}/src/common/include
+                    ${extra_includes}
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source}
             COMMENT "Hipifying ${cuda_source}"
         )

@@ -2,8 +2,6 @@
 #define CUDA_DEVICE_DEBAYER_H
 
 #include <stdint.h>
-#include "MHC_filters.h"
-#include "MHC_apply.h"
 #include <sys/types.h>
 
 void demosaic_bilinear_rggb(

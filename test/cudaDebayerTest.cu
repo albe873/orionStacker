@@ -1,19 +1,13 @@
 #include "cuda_runtime.h"
-#include "fits_api.h"
-#include "cuda_check.h"
+#include "common.h"
+#include "fits_helper.h"
+#include "cuda_helper.h"
 #include "debayer.h"
 
 #include <stdio.h>
 #include <dirent.h>
 #include <string.h>
-#include <ctime>
 #include <getopt.h>
-
-double cpuSecond() {
-    struct timespec ts;
-    timespec_get(&ts, TIME_UTC);
-    return ((double)ts.tv_sec + (double)ts.tv_nsec * 1.e-9);
-}
 
 int main(int argc, char **argv) {
     const char *in_dir = NULL;
@@ -49,9 +43,7 @@ int main(int argc, char **argv) {
     cudaDeviceProp deviceProp;
     CHECK(cudaGetDeviceProperties(&deviceProp, dev));
     CHECK(cudaSetDevice(dev));
-    cudaMemLocation devLoc;
-    devLoc.id = dev;
-    devLoc.type = cudaMemLocationTypeDevice;
+    PrefetchDeviceArg devLoc = make_prefetch_device_arg(dev);
 
     // Controlla file nella directory
     DIR *dir = opendir(in_dir);
@@ -73,7 +65,7 @@ int main(int argc, char **argv) {
             fitsfile *fptr = nullptr;
             open_fits(path, &fptr);
             long w,h,n;
-            get_image_dimensions(fptr, &w,&h,&n);
+            get_fits_dimensions(fptr, &w,&h,&n);
             if (n != 1) {
                 fprintf(stderr,"Skipping %s: expected 1 channel\n", path);
                 fits_close_file(fptr,&status);

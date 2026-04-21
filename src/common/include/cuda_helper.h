@@ -1,10 +1,23 @@
-#ifndef CUDA_CHECK_H
-#define CUDA_CHECK_H
+#ifndef CUDA_HELPER_H
+#define CUDA_HELPER_H
 
 #if defined(__HIPCC__)
     typedef hipError_t cudaError_t;
     #define cudaSuccess hipSuccess
     #define cudaGetErrorString hipGetErrorString
+#endif
+
+#if defined(__HIP_PLATFORM_AMD__)
+using PrefetchDeviceArg = int;
+static inline PrefetchDeviceArg make_prefetch_device_arg(int dev) { return dev; }
+#else
+using PrefetchDeviceArg = cudaMemLocation;
+static inline PrefetchDeviceArg make_prefetch_device_arg(int dev) {
+    PrefetchDeviceArg loc;
+    loc.id = dev;
+    loc.type = cudaMemLocationTypeDevice;
+    return loc;
+}
 #endif
 
 #include <cstdio>
@@ -18,4 +31,4 @@ inline void cuda_check(cudaError_t error_code, const char *file, int line) {
     }
 }
 
-#endif // CUDA_CHECK_H
+#endif // CUDA_HELPER_H

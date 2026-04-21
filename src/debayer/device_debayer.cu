@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include "MHC_filters.h"
 #include "MHC_apply.h"
-#include "common/cuda_check.h"
+#include "cuda_helper.h"
 
 
 __device__ inline long clamp(long v, long lo, long hi) {

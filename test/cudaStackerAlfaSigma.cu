@@ -1,7 +1,8 @@
 #include "cuda_runtime.h"
 
-#include "fits_api.h"
-#include "cuda_check.h"
+#include "fits_helper.h"
+#include "cuda_helper.h"
+#include "common.h"
 
 #include "device_alfa_sigma.h"
 #include "host_alfa_sigma.h"
@@ -12,26 +13,6 @@
 #include <ctime>
 #include <getopt.h>
 #include <cstdio>
-
-
-/*  --- AMD HIPify tool & HCC compiler for AMD ROCM ---
---  to generate hipified code, use the following command
-hipify-clang cudaStackerAlfaSigma.cu --cuda-path=/opt/cuda
-
---  to compile the hipified code, use the following command
-hipcc cudaStackerAlfaSigma.cu.hip  -o cudaStackerAlfaSigma -lcfitsio -O3 -Wall
-*/
-
-/*  --- NVCC compiler for NVIDIA CUDA -
---  to compile for cuda, use the following command
-nvcc cudaStackerAlfaSigma.cu -o cudaStackerAlfaSigma -lcfitsio -O3
-*/
-
-double cpuSecond() {
-    struct timespec ts;
-    timespec_get(&ts, TIME_UTC);
-    return ((double)ts.tv_sec + (double)ts.tv_nsec * 1.e-9);
-}
 
 int main(int argc, char **argv) {
 
@@ -101,13 +82,12 @@ int main(int argc, char **argv) {
     }
 
 
-    // Imposta il device CUDA
+    // Inizializza CUDA
     int dev = 0;
     cudaDeviceProp deviceProp;
-    CHECK(cudaGetDeviceProperties(&deviceProp, dev)); // Ottiene le proprietà del dispositivo CUDA
-    CHECK(cudaSetDevice(0)); // Seleziona il dispositivo CUDA
-    cudaMemLocation devLoc;
-    devLoc.type = cudaMemLocationTypeDevice;
+    CHECK(cudaGetDeviceProperties(&deviceProp, dev));
+    CHECK(cudaSetDevice(dev));
+    PrefetchDeviceArg devLoc = make_prefetch_device_arg(dev);
 
     // Apertura della cartella
     remove_trailing_slash((char *)in_dir);
@@ -122,6 +102,7 @@ int main(int argc, char **argv) {
 
     fitsfile *fptr = nullptr;
     long width, height, n_chan, new_width, new_height, new_n_chan;
+    
     int status;
     u_int16_t image_count = 0, image_num = 0;
     dim3 block_size(512), grid_size;
@@ -139,13 +120,13 @@ int main(int argc, char **argv) {
 
                 if (image_num == 0) {
                     print_fits_metadata(fptr);
-                    get_image_dimensions(fptr, &width, &height, &n_chan);
+                    get_fits_dimensions(fptr, &width, &height, &n_chan);
                     npixels = width * height * n_chan;
                     grid_size = (npixels / 2 + block_size.x - 1) / block_size.x;
                     printf("grid_size: %d, tot %d, wasted %lu\n", grid_size.x, grid_size.x * block_size.x, (grid_size.x * block_size.x) - npixels/2);
                 }
                 else {
-                    get_image_dimensions(fptr, &new_width, &new_height, &new_n_chan);
+                    get_fits_dimensions(fptr, &new_width, &new_height, &new_n_chan);
                     if (new_width != width || new_height != height || new_n_chan != n_chan) {
                         fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
                         fits_close_file(fptr, &status);
@@ -200,7 +181,7 @@ int main(int argc, char **argv) {
                 printf("Opening file: %s\n", file_path);
                 open_fits(file_path, &fptr);
 
-                get_image_dimensions(fptr, &new_width, &new_height, &new_n_chan);
+                get_fits_dimensions(fptr, &new_width, &new_height, &new_n_chan);
                 if (new_width != width || new_height != height || new_n_chan != n_chan) {
                     fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
                     fits_close_file(fptr, &status);
@@ -232,8 +213,8 @@ int main(int argc, char **argv) {
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
     
     
-    save_image_fits(out_dir, file_name, mean, width, height, n_chan);
-
+    //save_image_fits(out_dir, file_name, mean, width, height, n_chan);
+    save_image_tiff(out_dir, file_name, mean, width, height, n_chan);
 
     // free memory
     for (int i = 0; i < image_num; i++) {

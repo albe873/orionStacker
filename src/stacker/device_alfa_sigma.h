@@ -14,8 +14,8 @@ __device__ inline void computeMean2_uint16(u_int16_t **image, u_int16_t *mean, u
     u_int16_t count1 = 0, count2 = 0;
     u_int32_t acc1 = 0, acc2 = 0;
     for (int i = 0; i < numImages; i++) {
-        u_int16_t val1 = image[i][idx1];
-        u_int16_t val2 = image[i][idx2];
+        auto val1 = image[i][idx1];
+        auto val2 = image[i][idx2];
         if (val1 > 0) {
             count1++;
             acc1 += val1;
@@ -48,8 +48,8 @@ __device__ inline void computePartialMean2_uint16(u_int16_t **image, u_int16_t* 
     u_int32_t acc1 = 0, acc2 = 0;
     u_int16_t count1 = 0, count2 = 0;
     for (int i = 0; i < numImages; i++) {
-        u_int16_t val1 = image[i][idx1];
-        u_int16_t val2 = image[i][idx2];
+        auto val1 = image[i][idx1];
+        auto val2 = image[i][idx2];
         if (val1 > 0) {
             acc1 += val1;
             count1++;
@@ -67,7 +67,7 @@ __device__ inline void computePartialMean_uint16(u_int16_t **image, u_int16_t* m
     u_int32_t acc = 0;
     u_int16_t count = 0;
     for (int i = 0; i < numImages; i++) {
-        u_int16_t val = image[i][idx];
+        auto val = image[i][idx];
         if (val > 0) {
             acc += val;
             count++;
@@ -82,8 +82,8 @@ __device__ inline void computeStdDev2_uint16(float *std1, float *std2, u_int16_t
     *std1 = 0.0f;
     *std2 = 0.0f;
     for (int i = 0; i < numImages; i++) {
-        u_int16_t val1 = image[i][idx1];
-        u_int16_t val2 = image[i][idx2];
+        auto val1 = image[i][idx1];
+        auto val2 = image[i][idx2];
         if (val1 > 0) {
             count1++;
             *std1 += ((float)val1 - mean1) * ((float)val1 - mean1);
@@ -93,42 +93,53 @@ __device__ inline void computeStdDev2_uint16(float *std1, float *std2, u_int16_t
             *std2 += ((float)val2 - mean2) * ((float)val2 - mean2);
         }
     }
-    *std1 = (count1 > 1) ? sqrtf(*std1 / count1) : 0.0f;
-    *std2 = (count2 > 1) ? sqrtf(*std2 / count2) : 0.0f;
+    *std1 = (count1 > 1) ? (*std1 / count1) : 0.0f;
+    *std2 = (count2 > 1) ? (*std2 / count2) : 0.0f;
 }
 
 __device__ inline void computeStdDev_uint16(float *std, u_int16_t mean, u_int16_t **image, u_int64_t idx, u_int16_t numImages) {
     u_int16_t count = 0;
     *std = 0.0f;
     for (int i = 0; i < numImages; i++) {
-        u_int16_t val = image[i][idx];
+        auto val = image[i][idx];
         if (val > 0) {
             count++;
             *std += ((float)val - mean) * ((float)val - mean);
         }
     }
-    *std = (count > 1) ? sqrtf(*std / count) : 0.0f;
+    *std = (count > 1) ? (*std / count) : 0.0f;
 }
 
 // filtro i pixel con valore fuori dal range, mettendoli a 0
 __device__ inline void filterPixels2_uint16(u_int16_t mean1, float std1, u_int16_t mean2, float std2, u_int16_t **image, u_int64_t idx1, u_int64_t idx2, float k, u_int16_t numImages) {
+    const float k2 = k * k;
     for (int i = 0; i < numImages; i++) {
-        u_int16_t val1 = image[i][idx1];
-        u_int16_t val2 = image[i][idx2];
+        auto val1 = image[i][idx1];
+        auto val2 = image[i][idx2];
 
-        if (val1 > 0 && (val1 > mean1 + k * std1 || val1 < mean1 - k * std1))
-            image[i][idx1] = 0;
+        if (val1 > 0) {
+            float d1 = (float)val1 - (float)mean1;
+            if (d1 * d1 > k2 * std1)
+                image[i][idx1] = 0;
+        }
 
-        if (val2 > 0 && (val2 > mean2 + k * std2 || val2 < mean2 - k * std2))
-            image[i][idx2] = 0;
+        if (val2 > 0) {
+            float d2 = (float)val2 - (float)mean2;
+            if (d2 * d2 > k2 * std2)
+                image[i][idx2] = 0;
+        }
     }
 }
 
 __device__ inline void filterPixels_uint16(u_int16_t mean, float std, u_int16_t **image, u_int64_t idx, float k, u_int16_t numImages) {
+    const float k2 = k * k;
     for (int i = 0; i < numImages; i++) {
         u_int16_t val = image[i][idx];
-        if (val > 0 && (val > mean + k * std || val < mean - k * std))
-            image[i][idx] = 0;
+        if (val > 0) {
+            float d = (float)val - (float)mean;
+            if (d * d > k2 * std)
+                image[i][idx] = 0;
+        }
     }
 }
 
@@ -173,10 +184,10 @@ __device__ inline void computeMean4_uint8(u_int8_t **image, u_int8_t *mean,
     u_int16_t count1 = 0, count2 = 0, count3 = 0, count4 = 0;
     u_int32_t acc1 = 0, acc2 = 0, acc3 = 0, acc4 = 0;
     for (int i = 0; i < numImages; i++) {
-        u_int16_t val1 = image[i][idx1];
-        u_int16_t val2 = image[i][idx2];
-        u_int16_t val3 = image[i][idx3];
-        u_int16_t val4 = image[i][idx4];
+        auto val1 = image[i][idx1];
+        auto val2 = image[i][idx2];
+        auto val3 = image[i][idx3];
+        auto val4 = image[i][idx4];
         if (val1 > 0) {
             count1++;
             acc1 += val1;
@@ -222,10 +233,10 @@ __device__ inline void computePartialMean4_uint8(u_int8_t **image,
     u_int32_t acc1 = 0, acc2 = 0, acc3 = 0, acc4 = 0;
     u_int16_t count1 = 0, count2 = 0, count3 = 0, count4 = 0;
     for (int i = 0; i < numImages; i++) {
-        u_int16_t val1 = image[i][idx1];
-        u_int16_t val2 = image[i][idx2];
-        u_int16_t val3 = image[i][idx3];
-        u_int16_t val4 = image[i][idx4];
+        auto val1 = image[i][idx1];
+        auto val2 = image[i][idx2];
+        auto val3 = image[i][idx3];
+        auto val4 = image[i][idx4];
         if (val1 > 0) {
             acc1 += val1;
             count1++;
@@ -274,10 +285,10 @@ __device__ inline void computeStdDev4_uint8(float *std1, float *std2, float *std
     *std3 = 0.0f;
     *std4 = 0.0f;
     for (int i = 0; i < numImages; i++) {
-        u_int16_t val1 = image[i][idx1];
-        u_int16_t val2 = image[i][idx2];
-        u_int16_t val3 = image[i][idx3];
-        u_int16_t val4 = image[i][idx4];
+        auto val1 = image[i][idx1];
+        auto val2 = image[i][idx2];
+        auto val3 = image[i][idx3];
+        auto val4 = image[i][idx4];
         if (val1 > 0) {
             count1++;
             *std1 += ((float)val1 - mean1) * ((float)val1 - mean1);
@@ -295,10 +306,10 @@ __device__ inline void computeStdDev4_uint8(float *std1, float *std2, float *std
             *std4 += ((float)val4 - mean4) * ((float)val4 - mean4);
         }
     }
-    *std1 = (count1 > 1) ? sqrtf(*std1 / count1) : 0.0f;
-    *std2 = (count2 > 1) ? sqrtf(*std2 / count2) : 0.0f;
-    *std3 = (count3 > 1) ? sqrtf(*std3 / count3) : 0.0f;
-    *std4 = (count4 > 1) ? sqrtf(*std4 / count4) : 0.0f;
+    *std1 = (count1 > 1) ? (*std1 / count1) : 0.0f;
+    *std2 = (count2 > 1) ? (*std2 / count2) : 0.0f;
+    *std3 = (count3 > 1) ? (*std3 / count3) : 0.0f;
+    *std4 = (count4 > 1) ? (*std4 / count4) : 0.0f;
 }
 
 __device__ inline void computeStdDev_uint8(float *std, u_int8_t mean, u_int8_t **image, u_int64_t idx, u_int16_t numImages) {
@@ -311,7 +322,7 @@ __device__ inline void computeStdDev_uint8(float *std, u_int8_t mean, u_int8_t *
             *std += ((float)val - mean) * ((float)val - mean);
         }
     }
-    *std = (count > 1) ? sqrtf(*std / count) : 0.0f;
+    *std = (count > 1) ? (*std / count) : 0.0f;
 }
 
 // filtro i pixel con valore fuori dal range, mettendoli a 0
@@ -319,31 +330,48 @@ __device__ inline void filterPixels4_uint8(u_int8_t mean1, float std1, u_int8_t 
                                            u_int8_t **image,
                                            u_int64_t idx1, u_int64_t idx2, u_int64_t idx3, u_int64_t idx4, 
                                            float k, u_int16_t numImages) {
+    const float k2 = k * k;
     for (int i = 0; i < numImages; i++) {
-        u_int8_t val1 = image[i][idx1];
-        u_int8_t val2 = image[i][idx2];
-        u_int8_t val3 = image[i][idx3];
-        u_int8_t val4 = image[i][idx4];
+        auto val1 = image[i][idx1];
+        auto val2 = image[i][idx2];
+        auto val3 = image[i][idx3];
+        auto val4 = image[i][idx4];
 
-        if (val1 > 0 && (val1 > mean1 + k * std1 || val1 < mean1 - k * std1))
-            image[i][idx1] = 0;
+        if (val1 > 0) {
+            float d1 = (float)val1 - (float)mean1;
+            if (d1 * d1 > k2 * std1)
+                image[i][idx1] = 0;
+        }
 
-        if (val2 > 0 && (val2 > mean2 + k * std2 || val2 < mean2 - k * std2))
-            image[i][idx2] = 0;
+        if (val2 > 0) {
+            float d2 = (float)val2 - (float)mean2;
+            if (d2 * d2 > k2 * std2)
+                image[i][idx2] = 0;
+        }
 
-        if (val3 > 0 && (val3 > mean3 + k * std3 || val3 < mean3 - k * std3))
-            image[i][idx3] = 0;
+        if (val3 > 0) {
+            float d3 = (float)val3 - (float)mean3;
+            if (d3 * d3 > k2 * std3)
+                image[i][idx3] = 0;
+        }
         
-        if (val4 > 0 && (val4 > mean4 + k * std4 || val4 < mean4 - k * std4))
-            image[i][idx4] = 0;
+        if (val4 > 0) {
+            float d4 = (float)val4 - (float)mean4;
+            if (d4 * d4 > k2 * std4)
+                image[i][idx4] = 0;
+        }
     }
 }
 
 __device__ inline void filterPixels_uint8(u_int8_t mean, float std, u_int8_t **image, u_int64_t idx, float k, u_int16_t numImages) {
+    const float k2 = k * k;
     for (int i = 0; i < numImages; i++) {
         u_int8_t val = image[i][idx];
-        if (val > 0 && (val > mean + k * std || val < mean - k * std))
-            image[i][idx] = 0;
+        if (val > 0) {
+            float d = (float)val - (float)mean;
+            if (d * d > k2 * std)
+                image[i][idx] = 0;
+        }
     }
 }
 

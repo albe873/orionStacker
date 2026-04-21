@@ -1,4 +1,5 @@
-#include "fits_api.h"
+#include "common.h"
+#include "fits_helper.h"
 #include "host_alfa_sigma.h"
 
 #include <stdio.h>
@@ -7,16 +8,6 @@
 #include <time.h>
 #include <getopt.h>
 #include <math.h>
-
-/*
-gcc CPUStackerAlfaSigma.c -o CPUStackerAlfaSigma -lcfitsio -lm -O3 -march=native -Wall
-*/
-
-double cpuSecond() {
-    struct timespec ts;
-    timespec_get(&ts, TIME_UTC);
-    return ((double)ts.tv_sec + (double)ts.tv_nsec * 1.e-9);
-}
 
 int main(int argc, char **argv) {
 
@@ -39,7 +30,7 @@ int main(int argc, char **argv) {
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "i:o:n:k:s", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:o:n:k:s:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'i':
                 in_dir = optarg;
@@ -51,10 +42,10 @@ int main(int argc, char **argv) {
                 file_name = optarg;
                 break;
             case 'k':
-                kappa = atoi(optarg);
+                kappa = atof(optarg);
                 break;
             case 's': 
-                sigma = atof(optarg);
+                sigma = atoi(optarg);
                 break;
             default:
                 fprintf(stderr, "Usage: %s --input-directory <input/dir>\n", argv[0]);
@@ -95,11 +86,11 @@ int main(int argc, char **argv) {
 
                 if (image_num == 0) {
                     print_fits_metadata(fptr);
-                    get_image_dimensions(fptr, &width, &height, &depth);
+                    get_fits_dimensions(fptr, &width, &height, &depth);
                     npixels = width * height * depth;
                 }
                 else {
-                    get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
+                    get_fits_dimensions(fptr, &new_width, &new_height, &new_depth);
                     if (new_width != width || new_height != height || new_depth != depth) {
                         fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
                         fits_close_file(fptr, &status);
@@ -147,7 +138,7 @@ int main(int argc, char **argv) {
                 printf("Opening file: %s\n", file_path);
                 open_fits(file_path, &fptr);
 
-                get_image_dimensions(fptr, &new_width, &new_height, &new_depth);
+                get_fits_dimensions(fptr, &new_width, &new_height, &new_depth);
                 if (new_width != width || new_height != height || new_depth != depth) {
                     fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
                     fits_close_file(fptr, &status);

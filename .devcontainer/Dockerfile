@@ -17,6 +17,9 @@ ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/cuda-12.6/lib64
 # Install HIP ROCM SDK
 RUN apt install -y rocm-hip-sdk
 
+# Install gtkmm
+RUN apt install -y libgtkmm-4.0-dev
+
 # User setup
 #RUN adduser --disabled-password --gecos '' --uid 1000 --gid 1000 user
 RUN adduser ubuntu sudo

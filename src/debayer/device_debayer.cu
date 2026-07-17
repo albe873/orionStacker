@@ -1,7 +1,7 @@
 #include <cuda_runtime.h>
 #include <stdint.h>
-#include "MHC_filters.h"
-#include "MHC_apply.h"
+#include "MHC_filters.cuh"
+#include "MHC_apply.cuh"
 #include "cuda_helper.h"
 
 
@@ -81,7 +81,8 @@ __global__ void demosaic_mhc_rggb_kernel( const u_int16_t * __restrict__ gray_al
     u_int64_t npixels = (u_int64_t)width * (u_int64_t)height;
     u_int64_t total_pixels = npixels * (u_int64_t)image_count;
 
-    if (idx_global >= total_pixels) return;
+    if (idx_global >= total_pixels)
+        return;
 
     // immagine e pixel
     u_int16_t image_idx = (u_int16_t)(idx_global / npixels);
@@ -149,7 +150,7 @@ void demosaic_bilinear_rggb(const u_int16_t *gray_all, u_int16_t *rgb_all, long 
     u_int64_t npixels = width*height;
     dim3 block_size(512);
     dim3 grid_size((npixels*image_count + block_size.x - 1)/block_size.x);
-    demosaic_mhc_rggb_kernel<<<grid_size, block_size>>>(gray_all, rgb_all, width, height, image_count);
+    demosaic_bilinear_rggb_kernel<<<grid_size, block_size>>>(gray_all, rgb_all, width, height, image_count);
     CHECK(cudaDeviceSynchronize());
 }
 

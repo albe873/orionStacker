@@ -1,7 +1,7 @@
-#ifndef MHC_APPLY_H
-#define MHC_APPLY_H
+#ifndef MHC_APPLY_CUH
+#define MHC_APPLY_CUH
 
-#include "MHC_filters.h"
+#include "MHC_filters.cuh"
 
 // Funzione inline per clamp
 __device__ inline int clamp_index(int v, int lo, int hi) {

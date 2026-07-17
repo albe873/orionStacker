@@ -1,5 +1,5 @@
-#ifndef MHC_FILTERS_H
-#define MHC_FILTERS_H
+#ifndef MHC_FILTERS_CUH
+#define MHC_FILTERS_CUH
 
 // ============================================================================
 // Malvar-He-Cutler demosaicing kernels (5x5) - RGGB Bayer pattern
@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 // 1. Verde ai pixel R o B
 // Usato quando il pixel centrale è R o B, per stimare G mancante
-const float KERNEL_G_at_RB[5][5] = {
+__device__ __constant__ float KERNEL_G_at_RB[5][5] = {
     {  0.0f,  0.0f, -1.0f,  0.0f,  0.0f },
     {  0.0f,  0.0f,  2.0f,  0.0f,  0.0f },
     { -1.0f,  2.0f,  4.0f,  2.0f, -1.0f },
@@ -23,7 +23,7 @@ const float KERNEL_G_at_RB[5][5] = {
 // 2. Rosso ai pixel G (riga R) 
 // 4. Blu ai pixel G (riga B)
 // NOTA: stesso kernel usato, cambia il canale da ricostruire.
-const float KERNEL_RB_at_G_diag[5][5] = {
+__device__ __constant__ float KERNEL_RB_at_G_diag[5][5] = {
     {  0.0f,  0.0f,  0.5f,  0.0f,  0.0f },
     {  0.0f, -1.0f,  0.0f, -1.0f,  0.0f },
     { -1.0f,  4.0f,  5.0f,  4.0f, -1.0f },
@@ -36,7 +36,7 @@ const float KERNEL_RB_at_G_diag[5][5] = {
 // 3. Rosso ai pixel G (colonna R) 
 // 5. Blu ai pixel G (colonna B)
 // È il trasposto del precedente.
-const float KERNEL_RB_at_G_cross[5][5] = {
+__device__ __constant__ float KERNEL_RB_at_G_cross[5][5] = {
     {  0.0f,  0.0f, -1.0f,  0.0f,  0.0f },
     {  0.0f, -1.0f,  4.0f, -1.0f,  0.0f },
     {  0.5f,  0.0f,  5.0f,  0.0f,  0.5f },
@@ -49,7 +49,7 @@ const float KERNEL_RB_at_G_cross[5][5] = {
 // ---------------------------------------------------------------------------
 // 6. Rosso ai pixel B 
 // 8. Blu ai pixel R
-const float KERNEL_RB_at_opposite[5][5] = {
+__device__ __constant__ float KERNEL_RB_at_opposite[5][5] = {
     {  0.0f,  0.0f, -1.5f,  0.0f,  0.0f },
     {  0.0f,  2.0f,  0.0f,  2.0f,  0.0f },
     { -1.5f,  0.0f,  6.0f,  0.0f, -1.5f },

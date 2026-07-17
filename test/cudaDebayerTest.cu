@@ -45,9 +45,16 @@ int main(int argc, char **argv) {
     CHECK(cudaSetDevice(dev));
     PrefetchDeviceArg devLoc = make_prefetch_device_arg(dev);
 
+    // =========================
+    printf("\n==========================\n");
+    printf("Reading input dir\n");
+
     // Controlla file nella directory
     DIR *dir = opendir(in_dir);
-    if (!dir) { perror("opendir"); return 1; }
+    if (!dir) {
+        perror("  opendir");
+        exit(1);
+    }
 
     struct dirent *entry;
     long width=0, height=0, n_chan=0;
@@ -84,7 +91,7 @@ int main(int argc, char **argv) {
     closedir(dir);
 
     if (image_count == 0) { fprintf(stderr,"No valid images\n"); return 1; }
-    printf("Found %d images\n", image_count);
+    printf("  Found %d images\n", image_count);
 
     u_int64_t npixels = width*height;
 
@@ -96,7 +103,10 @@ int main(int argc, char **argv) {
 
     // Rileggi le immagini e copia in memoria
     dir = opendir(in_dir);
-    if (!dir) { perror("opendir"); return 1; }
+    if (!dir) {
+        perror("  opendir");
+        exit(1);
+    }
 
     int idx=0;
     while ((entry = readdir(dir)) != NULL && idx<image_count) {
@@ -117,26 +127,80 @@ int main(int argc, char **argv) {
     closedir(dir);
 
     CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(u_int16_t), devLoc, 0));
+    printf("  Loaded %d images of size %ldx%ld\n", image_count, width, height);
 
-    // Esegui kernel
+    // ==============================================
+    // GPU
+    printf("\n==========================\n");
+    printf("GPU\n");
 
     double t_start = cpuSecond();
-    //demosaic_bilinear_rggb_kernel<<<grid_size, block_size>>>(gray_all,rgb_all,width,height,image_count);
     demosaic_mhc_rggb(gray_all, rgb_all, width, height, image_count);
-    double t_elapsed = cpuSecond()-t_start;
-    printf("GPU debayer time: %f s\n", t_elapsed);
+    double time_gpu = cpuSecond()-t_start;
+    printf("  debayer done - time: %f s\n", time_gpu);
 
-    // Salva immagini RGB
+    // ===============================================
+    // Saving the images
+    printf("\n==========================\n");
+    printf("Saving the images\n");
     for (int i = 0; i < image_count; i++) {
         char base_name[128];
         snprintf(base_name, sizeof(base_name), "debayered_%03d", i + 1);
         save_image_fits(out_dir, base_name, rgb_all + i * npixels * 3, width, height, 3);
     }
 
+    // ==============================
+    // CPU
+    printf("\n==========================\n");
+    printf("CPU\n");
+
+    CHECK(cudaMemPrefetchAsync(gray_all, npixels*image_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    // alloca memoria per il risultato CPU
+    u_int16_t *rgb_cpu = (u_int16_t *)malloc(npixels*3*image_count*sizeof(u_int16_t));
+    if (!rgb_cpu) {
+        fprintf(stderr,"Failed to allocate CPU memory\n");
+        exit(1);
+    }
+
+
+    t_start = cpuSecond();
+    demosaic_mhc_rggb_cpu(gray_all, rgb_cpu, width, height, image_count);
+    double time_cpu = cpuSecond()-t_start;
+    printf("  debayer done - time: %f s\n", time_cpu);
+
+    // ================================
+    // Comparaison
+    printf("\n==========================\n");
+    printf("Comparing results\n");
+    long errors = 0;
+    for (int i = 0; i < image_count; i++) {
+        for (u_int64_t p = 0; p < npixels*3; p++) {
+            u_int16_t gpu_val = rgb_all[i*npixels*3 + p];
+            u_int16_t cpu_val = rgb_cpu[i*npixels*3 + p];
+            if (gpu_val != cpu_val) {
+                errors++;
+            }
+        }
+    }
+    if (errors == 0) {
+        printf("  GPU and CPU results match!\n");
+    } else {
+        printf("  GPU and CPU results differ: %ld errors\n", errors);
+    }
+
+    // ==================================
+    // Performance
+    printf("\n==========================\n");
+    printf("Performance:\n");
+    double speedup = time_cpu / time_gpu;
+    printf("  CPU time: %f s,\tGPU time: %f s,\tSpeedup: %f x\n", time_cpu, time_gpu, speedup);
+
+
 
     // Libera memoria
     CHECK(cudaFree(gray_all));
     CHECK(cudaFree(rgb_all));
+    free(rgb_cpu);
     CHECK(cudaDeviceReset());
 
     return 0;

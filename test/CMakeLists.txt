@@ -31,6 +31,11 @@ if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
     target_link_libraries(cudaStarFinder  common starFinder cfitsio m ${OpenCV_LIBS})
 endif()
 
+# starFinder - Otsu Centralized Threshold Test
+#if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
+#    add_cuda_hip_executable(cudaStarFinder2 cudaStarFinder2.cu)
+#    target_link_libraries(cudaStarFinder2  common starFinder cfitsio m ${OpenCV_LIBS})
+#endif()
 
 # aligner
 if (CUDAToolkit_FOUND AND NOT CPU_ONLY)

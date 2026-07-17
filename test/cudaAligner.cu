@@ -48,6 +48,10 @@ u_int16_t min_u16_value(const u_int16_t *img, u_int64_t npixels) {
     return min_v;
 }
 
+inline float clamp(float v, float lo, float hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
 void print_u16_stats(const char *label, const u_int16_t *img, u_int64_t npixels) {
     if (npixels == 0) {
         printf("%s: empty\n", label);
@@ -171,7 +175,7 @@ bool build_star_descriptors(const star_detail *stars,
         }
 
         float cos_angle = (v1x * v2x + v1y * v2y) / (d1 * d2);
-        cos_angle = std::clamp(cos_angle, -1.0f, 1.0f);
+        cos_angle = clamp(cos_angle, -1.0f, 1.0f);
         const float angle_norm = std::acos(cos_angle) / static_cast<float>(CV_PI);
 
         rows.push_back({d1 / image_diag, d2 / image_diag, angle_norm});
@@ -285,7 +289,7 @@ bool build_star_descriptors_generalized(const star_detail *stars,
             const float d1 = std::sqrt(v1.x * v1.x + v1.y * v1.y);
             const float d2 = std::sqrt(v2.x * v2.x + v2.y * v2.y);
             float cos_angle = (v1.x * v2.x + v1.y * v2.y) / (d1 * d2);
-            cos_angle = std::clamp(cos_angle, -1.0f, 1.0f);
+            cos_angle = clamp(cos_angle, -1.0f, 1.0f);
             const float angle_norm = std::acos(cos_angle) / static_cast<float>(CV_PI);
             all_rows.push_back(angle_norm);
         }
@@ -728,7 +732,7 @@ int main(int argc, char **argv) {
 
     const std::string out_dir = "output_star";
     std::error_code fs_err;
-    std::filesystem::create_directories(out_dir, fs_err);
+    //std::filesystem::create_directories(out_dir, fs_err);
 
     const std::string match_out_path = out_dir + "/star_matches.png";
     if (!cv::imwrite(match_out_path, match_img)) {

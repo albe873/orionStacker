@@ -7,12 +7,12 @@
 #include <string.h>
 #include <math.h>
 
-void accumulatePixelsCPU(u_int32_t *acc, u_int16_t *image, int npixels) {
+void accumulatePixelsCPU(u_int32_t* __restrict__ acc, u_int16_t* __restrict__ image, int npixels) {
     for (int i = 0; i < npixels; i++) {
         acc[i] += image[i];
     }
 }
-void computeMeanCPU(u_int16_t **image, u_int16_t *mean, int numImages, int npixels) {
+void computeMeanCPU(u_int16_t** __restrict__ image, u_int16_t* __restrict__ mean, int numImages, int npixels) {
     for (int i = 0; i < npixels; i++) {
         u_int16_t immagini = 0;
         u_int32_t acc = 0;
@@ -28,7 +28,8 @@ void computeMeanCPU(u_int16_t **image, u_int16_t *mean, int numImages, int npixe
             mean[i] = 0;
     }
 }
-void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numImages, int npixels) {
+void computeStdDevCPU(float* __restrict__ std, u_int16_t* __restrict__ mean, u_int16_t** __restrict__ image,
+                      int numImages, int npixels) {
     u_int16_t immagini;
     for (int i = 0; i < npixels; i++) {
         immagini = 0;
@@ -43,7 +44,8 @@ void computeStdDevCPU(float *std, u_int16_t *mean, u_int16_t **image, int numIma
             std[i] = sqrtf(std[i] / immagini);
     }
 }
-void filterPixelsCPU(u_int16_t *mean, float *std, u_int16_t **image, int k, int numImages, int npixels) {
+void filterPixelsCPU(u_int16_t* __restrict__ mean, float* __restrict__ std, u_int16_t** __restrict__ image,
+                     int k, int numImages, int npixels) {
     for (int i = 0; i < npixels; i++) {
         for (int j = 0; j < numImages; j++) {
             if (image[j][i] > mean[i] + k * std[i] || image[j][i] < mean[i] - k * std[i]) {

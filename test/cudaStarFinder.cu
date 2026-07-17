@@ -13,6 +13,7 @@
 
 #include "opencv2/imgcodecs.hpp"
 #include <cstdlib>
+#include <algorithm>
 
 int main(int argc, char **argv) {
 
@@ -21,33 +22,35 @@ int main(int argc, char **argv) {
     long num;
     char *end;
     threshold_params t_par;
-        t_par.type = TR_SIMPLE;
+        t_par.type = OTSU_CENTRALIZED;
         t_par.threshold = 1500;
-        t_par.window_size = 255;
+        t_par.window_size = 201;
         t_par.reduce_factor = 8;
+        t_par.threshold_scale = 0.3f;
 
     u_int16_t max_star_size = 100;
-    u_int16_t min_star_size = 10;
+    u_int16_t min_star_size = 4;
     u_int16_t max_stars = 1000;
 
     static struct option long_options[] = {
         {"input-file", required_argument, 0, 'f'},
         {"threshold", optional_argument, 0, 't'},
         {"reduce-factor", optional_argument, 0, 'r'},
-        {"threshold-algorith", optional_argument, 0, 'a'},
+        {"threshold-algorithm", optional_argument, 0, 'a'},
         {"window-size", optional_argument, 0, 'w'},
+        {"threshold-factor", optional_argument, 0, 'T'},
         {"max-star-size", optional_argument, 0, 'M'},
         {"min-star-size", optional_argument, 0, 'm'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:M:m:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:T:M:m:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'f':
                 filename = optarg;
                 break;
-            case 't':
-                num = strtol(optarg, &end, 10);
+            case 't': {
+                auto num = strtol(optarg, &end, 10);
                 if (end == optarg) {
                     fprintf(stderr, "Cannot convert threshold value, using default\n");
                 } else if (num < 0 || num > 65535) {
@@ -55,9 +58,9 @@ int main(int argc, char **argv) {
                 } else {
                     t_par.threshold = num;
                 }
-                break;
-            case 'r':
-                num = strtol(optarg, &end, 10);
+                break;}
+            case 'r': {
+                auto num = strtol(optarg, &end, 10);
                 if (end == optarg) {
                     fprintf(stderr, "Cannot convert reduce factor, using default\n");
                 } else if (num < 1 || num > 65535) {
@@ -65,20 +68,22 @@ int main(int argc, char **argv) {
                 } else {
                     t_par.reduce_factor = num;
                 }
-                break;
-            case 'a':
+                break;}
+            case 'a': {
                 if (strcmp(optarg, "simple") == 0) {
                     t_par.type = TR_SIMPLE;
                 } else if (strcmp(optarg, "adaptive") == 0) {
                     t_par.type = TR_ADAPTIVE;
                 } else if (strcmp(optarg, "fast-adaptive") == 0) {
                     t_par.type = TR_FAST_ADAPTIVE;
+                } else if (strcmp(optarg, "otsu") == 0 || strcmp(optarg, "otsu-centralized") == 0) {
+                    t_par.type = OTSU_CENTRALIZED;
                 } else {
                     fprintf(stderr, "Invalid threshold algorithm, using default\n");
                 }
-                break;
-            case 'w':
-                num = strtol(optarg, &end, 10);
+                break;}
+            case 'w': {
+                auto num = strtol(optarg, &end, 10);
                 if (end == optarg) {
                     fprintf(stderr, "Cannot convert window size, using default\n");
                 } else if (num < 1 || num > 65535) {
@@ -86,9 +91,9 @@ int main(int argc, char **argv) {
                 } else {
                     t_par.window_size = num;
                 }
-                break;
-            case 'M':
-                num = strtol(optarg, &end, 10);
+                break;}
+            case 'M': {
+                auto num = strtol(optarg, &end, 10);
                 if (end == optarg) {
                     fprintf(stderr, "Cannot convert max star size, using default\n");
                 } else if (num < 1 || num > 65535) {
@@ -96,9 +101,9 @@ int main(int argc, char **argv) {
                 } else {
                     max_star_size = num;
                 }
-                break;
-            case 'm':
-                num = strtol(optarg, &end, 10);
+                break;}
+            case 'm': {
+                auto num = strtol(optarg, &end, 10);
                 if (end == optarg) {
                     fprintf(stderr, "Cannot convert min star size, using default\n");
                 } else if (num < 0 || num > 65535 || num >= max_star_size) {
@@ -106,8 +111,20 @@ int main(int argc, char **argv) {
                 } else {
                     min_star_size = num;
                 }
-                break;
+                break;}
+            case 'T': {
+                float threshold_scale = strtof(optarg, &end);
+                if (end == optarg) {
+                    fprintf(stderr, "Cannot convert threshold scale, using default\n");
+                } else if (threshold_scale <= 0.0f || threshold_scale > 10.0f) {
+                    fprintf(stderr, "Invalid threshold scale, using default\n");
+                } else {
+                    printf("changed threshold scale to %f\n", threshold_scale);
+                    t_par.threshold_scale = threshold_scale;
+                }
+                break;}
             default:
+                fprintf(stderr, "Invalid argument: %c\n", opt);
                 fprintf(stderr, "Usage: %s --input-file <image.fits>\n", argv[0]);
                 return 1;
         }
@@ -155,23 +172,28 @@ int main(int argc, char **argv) {
     get_fits_data(fptr, totpixels, fits_data);
     CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), devLoc, 0));
 
-    double t_start, t_elapsed;
+    // ======================================================
+    // GPU part
+    printf("\n======================================\n");
+    printf("Running star detection on GPU\n\n");
+
+    double t_start;
     t_start = cpuSecond();
 
-    // --- Convert to grayscale ---
+    // 1 - Convert to grayscale
     to_grayscale_planar_gpu(fits_data, gray_image, npixels);
-    t_elapsed = cpuSecond() - t_start;
-    printf("Grayscale done - time: %f\n", t_elapsed);
+    double time_grayscale_gpu = cpuSecond() - t_start;
+    printf("  Grayscale done - time: %f\n", time_grayscale_gpu);
     t_start = cpuSecond();
 
-    // --- Compute threshold ---
+    // 2 - Compute threshold
     compute_threshold_gpu(gray_image, threshold_image, width, height, t_par);
-    t_elapsed = cpuSecond() - t_start;
-    printf("Threshold done - time: %f\n", t_elapsed);
+    double time_threshold_gpu = cpuSecond() - t_start;
+    printf("  Threshold done - time: %f\n", time_threshold_gpu);
 
-    // --- Detect stars ---
+    // 3 - Detect stars
 
-    // Allocate memory for the stars info
+    // 3.1 - Allocate memory for the stars info
     star *d_stars = nullptr;
     CHECK(cudaMallocManaged(&d_stars, max_stars * sizeof(star)));
 
@@ -179,11 +201,172 @@ int main(int argc, char **argv) {
     CHECK(cudaMallocManaged(&d_num_stars, sizeof(u_int32_t)));
     *d_num_stars = 0;   // initialized to 0
     
-    // Detect
+    // 3.2 - Detect
     t_start = cpuSecond();
     detect_stars_gpu(threshold_image, width, height, max_star_size, min_star_size, d_stars, d_num_stars, max_stars);
-    t_elapsed = cpuSecond() - t_start;
-    printf("Star detection done - time: %f\n", t_elapsed);
+    double time_detect_stars_gpu = cpuSecond() - t_start;
+    printf("  Star detection done - time: %f\n", time_detect_stars_gpu);
+
+    // 4 - Star details
+
+    star_detail *stars_details = nullptr;
+    CHECK(cudaMallocManaged(&stars_details, *d_num_stars * sizeof(star_detail)));
+
+    t_start = cpuSecond();
+    populate_star_details_gpu(stars_details, d_stars, *d_num_stars, fits_data, gray_image, width, npixels);
+    double time_populate_star_details_gpu = cpuSecond() - t_start;
+    printf("  Star details population done - time: %f\n", time_populate_star_details_gpu);
+
+    // ==============================================
+    // CPU part
+    printf("\n======================================\n");
+    printf("Running star detection on CPU\n\n");
+    // allocating resources
+    u_int16_t *gray_image_cpu = new u_int16_t[npixels];
+    u_int8_t *threshold_image_cpu = new u_int8_t[npixels];
+
+    // 1 - grayscale
+    t_start = cpuSecond();
+    to_grayscale_planar(fits_data, gray_image_cpu, npixels);
+    double time_grayscale_cpu = cpuSecond() - t_start;
+    printf("  Grayscale done - time: %f\n", time_grayscale_cpu);
+
+    // 2 - threshold
+    t_start = cpuSecond();
+    compute_threshold(gray_image_cpu, threshold_image_cpu, width, height, t_par);
+    double time_threshold_cpu = cpuSecond() - t_start;
+    printf("  Threshold done - time: %f\n", time_threshold_cpu);
+    
+    // 3 - detection
+    star *stars_cpu = new star[max_stars];
+    u_int32_t num_stars_cpu = 0;
+    t_start = cpuSecond();
+    detect_stars(threshold_image_cpu, width, height, max_star_size, min_star_size, stars_cpu, num_stars_cpu, max_stars);
+    double time_detect_stars_cpu = cpuSecond() - t_start;
+    printf("  Star detection done - time: %f\n", time_detect_stars_cpu);
+
+    // 4 - details
+    star_detail *stars_details_cpu = new star_detail[num_stars_cpu];
+    t_start = cpuSecond();
+    populate_star_details(stars_details_cpu, stars_cpu, num_stars_cpu, fits_data, gray_image_cpu, width, npixels);
+    double time_populate_star_details_cpu = cpuSecond() - t_start;
+    printf("  Star details population on CPU done - time: %f\n", time_populate_star_details_cpu);
+
+
+    // ====================================================
+    // Results comparaison
+    printf("\n======================================\n");
+    printf("Result comparaison\n\n");
+
+    u_int64_t matching_pixels = 0;
+    u_int64_t different_pixels = 0;
+    
+    for (u_int64_t i = 0; i < npixels; i++) {
+        if (threshold_image[i] == threshold_image_cpu[i]) {
+            matching_pixels++;
+        } else {
+            different_pixels++;
+        }
+    }
+
+    printf("  Matching pixels:  %lu (%.2f%%)\n", matching_pixels, 
+           (double)matching_pixels / (double)npixels * 100.0);
+    printf("  Different pixels: %lu (%.2f%%)\n\n", different_pixels,
+           (double)different_pixels / (double)npixels * 100.0);
+
+    printf("  Stars detected on GPU: %u, Stars detected on CPU: %u\n", *d_num_stars, num_stars_cpu);
+    if (*d_num_stars != num_stars_cpu) {
+        printf("  WARNING: Different number of stars detected!\n");
+    }
+
+    for (int i = 0; i < std::min((int)*d_num_stars, (int)num_stars_cpu); i++) {
+        bool found = false;
+
+        for (int j = 0; j < (int)num_stars_cpu; j++) {
+            if (d_stars[i].start_x == stars_cpu[j].start_x && d_stars[i].start_y == stars_cpu[j].start_y &&
+                d_stars[i].size_x == stars_cpu[j].size_x && d_stars[i].size_y == stars_cpu[j].size_y) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            printf("  CPU detected star %u has no matches in GPU detected starts.\n", i);
+        }
+    }
+
+    int matching_stars = 0;
+    int matching_details = 0;
+    for (int i = 0; i < std::min((int)*d_num_stars, (int)num_stars_cpu); i++) {
+        bool found = false;
+        bool matchesDetails = false;
+
+        for (int j = 0; j < (int)*d_num_stars; j++) {
+            if (d_stars[j].start_x == stars_cpu[i].start_x && d_stars[j].start_y == stars_cpu[i].start_y &&
+                d_stars[j].size_x == stars_cpu[i].size_x && d_stars[j].size_y == stars_cpu[i].size_y) {
+                
+                found = true;
+                matching_stars++;
+                
+                // Use epsilon for floating-point comparison
+                const double eps = 1e-1;
+                auto feq = [eps](double a, double b) { return fabs(a - b) < eps; };
+                
+                bool x_match = feq(stars_details[j].x, stars_details_cpu[i].x);
+                bool y_match = feq(stars_details[j].y, stars_details_cpu[i].y);
+                bool r_match = feq(stars_details[j].b_red, stars_details_cpu[i].b_red);
+                bool g_match = feq(stars_details[j].b_green, stars_details_cpu[i].b_green);
+                bool b_match = feq(stars_details[j].b_blue, stars_details_cpu[i].b_blue);
+                bool total_match = feq(stars_details[j].b, stars_details_cpu[i].b);
+                
+                if (x_match && y_match && r_match && g_match && b_match && total_match) {
+                    matching_details++;
+                    matchesDetails = true;
+                } else {
+                    printf("  WARNING: GPU Star %u (CPU Star %u) details do not match!\n", i, j);
+                    if (!x_match) printf("    x: GPU=%.6f CPU=%.6f diff=%.6f\n", stars_details[j].x, stars_details_cpu[i].x, fabs(stars_details[j].x - stars_details_cpu[i].x));
+                    if (!y_match) printf("    y: GPU=%.6f CPU=%.6f diff=%.6f\n", stars_details[j].y, stars_details_cpu[i].y, fabs(stars_details[j].y - stars_details_cpu[i].y));
+                    if (!r_match) printf("    b_red: GPU=%.6f CPU=%.6f diff=%.6f\n", stars_details[j].b_red, stars_details_cpu[i].b_red, fabs(stars_details[j].b_red - stars_details_cpu[i].b_red));
+                    if (!g_match) printf("    b_green: GPU=%.6f CPU=%.6f diff=%.6f\n", stars_details[j].b_green, stars_details_cpu[i].b_green, fabs(stars_details[j].b_green - stars_details_cpu[i].b_green));
+                    if (!b_match) printf("    b_blue: GPU=%.6f CPU=%.6f diff=%.6f\n", stars_details[j].b_blue, stars_details_cpu[i].b_blue, fabs(stars_details[j].b_blue - stars_details_cpu[i].b_blue));
+                    if (!total_match) printf("    b: GPU=%.6f CPU=%.6f diff=%.6f\n", stars_details[j].b, stars_details_cpu[i].b, fabs(stars_details[j].b - stars_details_cpu[i].b));
+                }
+
+                break;
+            }
+        }
+
+        if (!found) {
+            printf("  GPU detected star %u has no matches in CPU detected starts.\n", i);
+        }
+    }
+    printf("  Matching stars: %d\n", matching_stars);
+    printf("  Matching stars details: %d\n", matching_details);
+        
+    // ====================================================
+    // Performance comparaison
+    printf("\n======================================\n");
+    printf("Performance comparaison\n\n");
+
+    printf("  GPU Grayscale time: %f s,\t CPU Grayscale time: %f s,\t speedup: %f x\n", 
+        time_grayscale_gpu, time_grayscale_cpu, time_grayscale_cpu / time_grayscale_gpu);
+    
+    printf("  GPU Threshold time: %f s,\t CPU Threshold time: %f s,\t speedup: %f x\n", 
+        time_threshold_gpu, time_threshold_cpu, time_threshold_cpu / time_threshold_gpu);
+    
+    printf("  GPU Star detection time: %f s,\t CPU Star detection time: %f s,\t speedup: %f x\n", 
+        time_detect_stars_gpu, time_detect_stars_cpu, time_detect_stars_cpu / time_detect_stars_gpu);
+    
+    printf("  GPU Star details time: %f s,\t CPU Star details time: %f s,\t speedup: %f x\n", 
+        time_populate_star_details_gpu, time_populate_star_details_cpu, time_populate_star_details_cpu / time_populate_star_details_gpu);
+    
+    double total_time_cpu = time_grayscale_cpu + time_threshold_cpu + time_detect_stars_cpu + time_populate_star_details_cpu;
+    double total_time_gpu = time_grayscale_gpu + time_threshold_gpu + time_detect_stars_gpu + time_populate_star_details_gpu;
+    printf("\n  Total GPU time: %f s,\t\t Total CPU time: %f s,\t\t speedup: %f x\n", 
+        total_time_gpu, total_time_cpu, total_time_cpu / total_time_gpu);
+
+
+
 
     // write threshold image to disk
     const char *threshold_dir = "output_gray";
@@ -194,29 +377,22 @@ int main(int argc, char **argv) {
     if (!cv::imwrite(out_path, img)) {
         fprintf(stderr, "Failed to write PNG %s\n", out_path.c_str());
     } else {
-        printf("Saved PNG %s\n", out_path.c_str());
+        printf("\nSaved PNG %s\n", out_path.c_str());
     }
 
-    // Get stars details
-    star_detail *stars_details = nullptr;
-    printf("Allocating stars details for %u stars\n", *d_num_stars);
-    CHECK(cudaMallocManaged(&stars_details, *d_num_stars * sizeof(star_detail)));
-    printf("Allocated stars details\n");
-
-    t_start = cpuSecond();
-    populate_star_details_gpu(stars_details, d_stars, *d_num_stars, fits_data, gray_image, width, npixels);
-    t_elapsed = cpuSecond() - t_start;
-    printf("Star details population done - time: %f\n", t_elapsed);
 
     // --- Print the stars info ---
+    /*
     printf("Detected %u stars:\n", *d_num_stars);
-    for (u_int32_t i = 0; i < *d_num_stars; i++) {
+    for (u_int32_t i = 0; i < std::min((int)*d_num_stars, 5); i++) {
         printf("Star %u: start=(%lu, %lu), size=(%u, %u)\n", i, d_stars[i].start_x, height - d_stars[i].start_y, d_stars[i].size_x, d_stars[i].size_y);
         printf("    Baricenter: (%.2f, %.2f), Brightness: R=%.2f G=%.2f B=%.2f Total=%.2f\n", 
                stars_details[i].x, height - stars_details[i].y, 
                stars_details[i].b_red, stars_details[i].b_green, stars_details[i].b_blue, stars_details[i].b);
     }
-
+    if (*d_num_stars > 5)
+        printf(".....\n");
+    */
 
     // --- Draw stars on the image ---
     draw_stars(fits_data, width, d_stars, *d_num_stars);
@@ -224,9 +400,4 @@ int main(int argc, char **argv) {
     // --- Save images ---
     const char *detect_dir = "output_star";
     save_image_fits(detect_dir, "detect_output", fits_data, width, height, channels);
-
-
-    // Ensure CUDA work is finished so unified memory is ready on host
-    CHECK(cudaDeviceSynchronize());
-
 }

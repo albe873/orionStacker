@@ -32,7 +32,8 @@ inline void init_star_detail(star_detail *star) {
 enum threshold_type {
     TR_SIMPLE,
     TR_ADAPTIVE,
-    TR_FAST_ADAPTIVE
+    TR_FAST_ADAPTIVE,
+    OTSU_CENTRALIZED
 };
 
 struct threshold_params {
@@ -40,6 +41,7 @@ struct threshold_params {
     u_int16_t threshold;
     u_int16_t window_size;
     u_int16_t reduce_factor;
+    float threshold_scale;
 };
 
 // GPU
@@ -60,9 +62,9 @@ void populate_star_details_gpu(star_detail *stars_details, star *stars, u_int32_
 
 
 // CPU
-void to_grayscale_planar(const uint16_t *image, uint16_t *gray_image, uint64_t npixels);
+void to_grayscale_planar(const uint16_t *image, uint16_t* __restrict__ gray_image, uint64_t npixels);
 
-void compute_threshold(const u_int16_t *img, u_int8_t *out_img,
+void compute_threshold(const u_int16_t *img, u_int8_t* __restrict__ out_img,
                        u_int64_t width, u_int64_t height,
                        threshold_params params);
 
@@ -74,6 +76,6 @@ void populate_star_details(star_detail *stars_details, star *stars, u_int32_t n_
                                const u_int16_t *img_rgb, const u_int16_t *img_gray,
                                u_int64_t width, u_int64_t npixels);
 
-void draw_stars(u_int16_t *img, u_int64_t width, star *stars, u_int32_t n_stars);
+void draw_stars(u_int16_t* __restrict__ img, u_int64_t width, const star *stars, u_int32_t n_stars);
 
 #endif // STAR_FINDER_H

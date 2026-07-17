@@ -1,10 +1,12 @@
-#ifndef CUDA_DEVICE_STARFINDER_H
-#define CUDA_DEVICE_STARFINDER_H
+#ifndef CUDA_DEVICE_STARFINDER_CU
+#define CUDA_DEVICE_STARFINDER_CU
 
 #include <cuda_runtime.h>
-#include "star_finder.h"
 #include "cuda_helper.h"
-#include "device_threshold.h"
+
+#include "star_finder.h"
+#include "device_threshold.cu"
+#include "device_otsu_centralized.cu"
 
 __global__ void sum_brightness_planar_uint16(const u_int16_t *input_rgb, u_int64_t input_width, u_int64_t npixels, 
                                       star s, star_detail *sd) {
@@ -298,6 +300,9 @@ void compute_threshold_gpu( const u_int16_t *img, u_int8_t *out_img,
                 params.reduce_factor, params.window_size, params.threshold);
             CHECK(cudaGetLastError());
             break;
+        case OTSU_CENTRALIZED:
+            cuda_otsu_centralized_threshold(img, out_img, width, height, params.window_size, params.threshold_scale);
+            
     }
     CHECK(cudaDeviceSynchronize());
     CHECK(cudaGetLastError());
@@ -352,4 +357,4 @@ void detect_stars_gpu(const u_int8_t *img, u_int64_t width, u_int64_t height,
     CHECK(cudaDeviceSynchronize());
 }
 
-#endif // CUDA_DEVICE_STARFINDER_H
+#endif // CUDA_DEVICE_STARFINDER_CU

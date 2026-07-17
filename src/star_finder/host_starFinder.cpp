@@ -7,8 +7,9 @@
 #include <stdlib.h>
 
 #include "star_finder.h"
+#include "host_otsu_centralized.cpp"
 
-void to_grayscale_planar(const uint16_t *image, uint16_t *gray_image, uint64_t npixels) {
+void to_grayscale_planar(const uint16_t *image, uint16_t* __restrict__ gray_image, uint64_t npixels) {
     for(uint64_t i = 0; i < npixels; i++) {
         uint16_t red = image[i];
         uint16_t green = image[i + npixels];
@@ -17,13 +18,13 @@ void to_grayscale_planar(const uint16_t *image, uint16_t *gray_image, uint64_t n
     }
 }
 
-void simple_threshold(const uint16_t *image, uint8_t *output, uint64_t npixels, uint16_t threshold) {
+void simple_threshold(const uint16_t *image, uint8_t* __restrict__ output, uint64_t npixels, uint16_t threshold) {
     for(uint64_t i = 0; i < npixels; i++) {
         output[i] = image[i] > threshold ? image[i] / 256 : 0;
     }
 }
 
-void adaptive_threshold(const uint16_t *image, uint8_t *output, uint64_t width, uint64_t height, 
+void adaptive_threshold(const uint16_t *image, uint8_t* __restrict__ output, uint64_t width, uint64_t height, 
                         uint16_t windowSize, uint16_t offset) {
     windowSize /= 2;
     for(uint64_t y = 0; y < height; y++) {
@@ -47,7 +48,7 @@ void adaptive_threshold(const uint16_t *image, uint8_t *output, uint64_t width, 
     }
 }
 
-void reduce_image(const uint16_t *image, uint16_t *reduced_image, uint64_t width, uint64_t height, 
+void reduce_image(const uint16_t *image, uint16_t* __restrict__ reduced_image, uint64_t width, uint64_t height, 
                   uint16_t reduce_factor) {
     uint64_t new_width = width / reduce_factor;
     uint64_t new_height = height / reduce_factor;
@@ -69,7 +70,7 @@ void reduce_image(const uint16_t *image, uint16_t *reduced_image, uint64_t width
     }
 }
 
-void adaptive_threshold_approximate(const uint16_t *image, uint8_t *output, uint64_t width, 
+void adaptive_threshold_approximate(const uint16_t *image, uint8_t* __restrict__ output, uint64_t width, 
                                     uint64_t height, uint16_t *reduced_image, 
                                     uint16_t reduce_factor, uint16_t windowSize, 
                                     uint16_t offset) {
@@ -95,7 +96,7 @@ void adaptive_threshold_approximate(const uint16_t *image, uint8_t *output, uint
     }
 }
 
-void draw_stars(u_int16_t *img, u_int64_t width, star *stars, u_int32_t n_stars) {
+void draw_stars(u_int16_t* __restrict__ img, u_int64_t width, const star *stars, u_int32_t n_stars) {
     for(uint32_t i = 0; i < n_stars; i++) {
         star s = stars[i];
 
@@ -144,16 +145,17 @@ inline void change_direction(int8_t &dir, int8_t &dir_x_or_y) {
 inline void write_star(star *stars, u_int32_t &num_stars, u_int32_t max_stars, 
                                   uint64_t start_x, uint64_t start_y,
                                   uint32_t size_x,  uint32_t size_y) {
+    u_int32_t idx = num_stars;
     num_stars++;
-    if (num_stars < max_stars) {
-        stars[num_stars].start_x = start_x;
-        stars[num_stars].start_y = start_y;
-        stars[num_stars].size_x = size_x;
-        stars[num_stars].size_y = size_y;
+    if (idx < max_stars) {
+        stars[idx].start_x = start_x;
+        stars[idx].start_y = start_y;
+        stars[idx].size_x = size_x;
+        stars[idx].size_y = size_y;
     }
 }
 
-void detect_stars(uint8_t *input, uint64_t width, uint64_t height, 
+void detect_stars(const uint8_t *input, uint64_t width, uint64_t height, 
                   uint16_t max_star_size, uint16_t min_star_size,
                   star *stars, uint32_t &num_stars, uint32_t max_stars) {
     
@@ -164,6 +166,7 @@ void detect_stars(uint8_t *input, uint64_t width, uint64_t height,
             uint64_t idx = y * width + x;
             auto current = input[idx];
 
+            // Se il pixel corrente è nero, non è una stella
             if(current == 0)
                 continue;
 
@@ -178,9 +181,11 @@ void detect_stars(uint8_t *input, uint64_t width, uint64_t height,
 
             u_int64_t current_idx;                                // indice del pixel corrente
 
-            // salvo le coordinate iniziali
-            auto min_x = x;
-            auto min_y = y;
+            // Use local variables for star detection to avoid modifying loop variables
+            uint64_t cur_x = x;
+            uint64_t cur_y = y;
+            uint64_t min_x = x;
+            uint64_t min_y = y;
 
             while(stepCurrentLimit[0] < max_star_size && stepCurrentLimit[1] < max_star_size) {
 
@@ -214,9 +219,9 @@ void detect_stars(uint8_t *input, uint64_t width, uint64_t height,
                     stepCount = stepCurrentLimit[dir_x_or_y];
 
                     // mi muovo, saltando tutti i controlli e vado al ciclo sucessivo
-                    x += directions[dir][0] * stepCount;
-                    y += directions[dir][1] * stepCount;
-                    if (x >= width-1 || y >= height-1) {
+                    cur_x += directions[dir][0] * stepCount;
+                    cur_y += directions[dir][1] * stepCount;
+                    if (cur_x >= width-1 || cur_y >= height-1) {
                         is_star = false;
                         break;
                     }
@@ -225,23 +230,23 @@ void detect_stars(uint8_t *input, uint64_t width, uint64_t height,
                 }
 
                 // mi muovo di un passo
-                x += directions[dir][0];
-                y += directions[dir][1];
+                cur_x += directions[dir][0];
+                cur_y += directions[dir][1];
                 stepCount++;
 
                 // check se sono ai bordi dell'immagine
-                if (x >= width || y >= height) {
+                if (cur_x >= width || cur_y >= height) {
                     is_star = false;
                     break;
                 }     
                 
                 // aggiorno le coordinate minime
-                min_x = x < min_x ? x : min_x;
-                min_y = y < min_y ? y : min_y;
+                min_x = cur_x < min_x ? cur_x : min_x;
+                min_y = cur_y < min_y ? cur_y : min_y;
 
                 // Controlla se il pixel corrente è maggiore del pixel centrale
                 // se è maggiore allora non è il centro di una stella, esco dal ciclo
-                current_idx = y * width + x;
+                current_idx = cur_y * width + cur_x;
                 if (input[current_idx] > current) {
                     is_star = false;
                     break;
@@ -306,6 +311,9 @@ void compute_threshold( const u_int16_t *img, u_int8_t *out_img,
             reduce_image(img, reduced_image, width, height, params.reduce_factor);
             adaptive_threshold_approximate(img, out_img, width, height, reduced_image,
                 params.reduce_factor, params.window_size, params.threshold);
+            break;
+        case OTSU_CENTRALIZED:
+            cpu_otsu_centralized_threshold(img, out_img, width, height, params.window_size, params.threshold_scale);
             break;
     }
     

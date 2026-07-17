@@ -1,11 +1,25 @@
 #ifndef CUDA_HELPER_H
 #define CUDA_HELPER_H
 
-#if defined(__HIPCC__)
+#ifdef __HIPCC__
+    #include <hip/hip_runtime.h>
     typedef hipError_t cudaError_t;
     #define cudaSuccess hipSuccess
+    #define cudaError_t hipError_t
     #define cudaGetErrorString hipGetErrorString
+    #define cudaMalloc hipMalloc
+    #define cudaMemcpy hipMemcpy
+    #define cudaMemset hipMemset
+    #define cudaFree hipFree
+    #define cudaDeviceSynchronize hipDeviceSynchronize
+    #define cudaMemcpyHostToDevice hipMemcpyHostToDevice
+    #define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
+#else
+    #include <cuda_runtime.h>
 #endif
+
+
+
 
 #if defined(__HIP_PLATFORM_AMD__)
 using PrefetchDeviceArg = int;

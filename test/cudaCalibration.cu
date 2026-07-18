@@ -58,7 +58,7 @@ int check_directory(const char *dir_path, int *count, long *width, long *height,
     closedir(dir);
 
     if (*count == 0) { fprintf(stderr,"No valid images\n"); return 1; }
-    printf("Found %d images\n", *count);
+    printf("  Found %d images\n", *count);
     return 0;
 }
 
@@ -133,6 +133,11 @@ int main(int argc, char **argv) {
     CHECK(cudaSetDevice(dev));
     PrefetchDeviceArg devLoc = make_prefetch_device_arg(dev);
 
+    // ==================================================
+    // GPU Calibration
+    printf("\n==========================================\n");
+    printf("Calibration in GPU\n\n");
+
     /************************************************** 1) MASTER BIAS **************************************************/
     // Controlla file nella directory bias (ritorna numero di immagini e dimensioni)
     long bias_width=0, bias_height=0, bias_n_chan=0;
@@ -162,18 +167,8 @@ int main(int argc, char **argv) {
     // Calcola master bias
     double t_start = cpuSecond();
     masterBias(bias_all, master_bias, bias_width, bias_height, bias_count);
-    double t_elapsed = cpuSecond()-t_start;
-    printf("GPU master bias time: %f s\n", t_elapsed);
-
-    // Salva master bias su FITS
-    char base_name[128];
-    snprintf(base_name, sizeof(base_name), "master_bias");
-    u_int16_t *temp_bias = (u_int16_t*)malloc(bias_pixels * sizeof(u_int16_t));
-    for (u_int64_t i = 0; i < bias_pixels; i++) {
-        temp_bias[i] = std::min<u_int16_t>(std::max<u_int16_t>(master_bias[i], 0), 65535);
-    }
-    save_image_fits(out_dir, base_name, temp_bias, bias_width, bias_height, 1);
-    free(temp_bias);
+    double time_master_bias_gpu = cpuSecond()-t_start;
+    printf("  GPU master bias time: %f s\n", time_master_bias_gpu);
 
     /************************************************** 2) MASTER DARK **************************************************/
     // controlla file nella directory dark (ritorna numero di immagini e dimensioni)
@@ -204,17 +199,8 @@ int main(int argc, char **argv) {
     //calcola master dark
     t_start = cpuSecond();
     masterDark(dark_all, master_bias, master_dark, dark_width, dark_height, dark_count);
-    t_elapsed = cpuSecond()-t_start;
-    printf("GPU master dark time: %f s\n", t_elapsed);
-
-    // Salva master dark su FITS
-    snprintf(base_name, sizeof(base_name), "master_dark");
-    u_int16_t *temp_dark = (u_int16_t*)malloc(dark_pixels * sizeof(u_int16_t));
-    for (u_int64_t i = 0; i < dark_pixels; i++) {
-        temp_dark[i] = std::min<u_int16_t>(std::max<u_int16_t>(master_dark[i], 0), 65535);
-    }
-    save_image_fits(out_dir, base_name, temp_dark, dark_width, dark_height, 1);
-    free(temp_dark);
+    double time_master_dark_gpu = cpuSecond()-t_start;
+    printf("  GPU master dark time: %f s\n", time_master_dark_gpu);
 
     /************************************************** 3) MASTER FLAT **************************************************/
     // controlla file nella directory flat (ritorna numero di immagini e dimensioni)
@@ -245,17 +231,8 @@ int main(int argc, char **argv) {
     //calcola master flat
     t_start = cpuSecond();
     masterFlat(flat_all, master_bias, master_flat, flat_width, flat_height, flat_count);
-    t_elapsed = cpuSecond()-t_start;
-    printf("GPU master flat time: %f s\n", t_elapsed);
-
-    // Salva master flat su FITS
-    snprintf(base_name, sizeof(base_name), "master_flat");
-    u_int16_t *temp_flat = (u_int16_t*)malloc(flat_pixels * sizeof(u_int16_t));
-    for (u_int64_t i = 0; i < flat_pixels; i++) {
-        temp_flat[i] = std::min<u_int16_t>(std::max<u_int16_t>(master_flat[i], 0), 65535);
-    }
-    save_image_fits(out_dir, base_name, temp_flat, flat_width, flat_height, 1);
-    free(temp_flat);
+    double time_master_flat_gpu = cpuSecond()-t_start;
+    printf("  GPU master flat time: %f s\n", time_master_flat_gpu);
 
     /************************************************** 4) CALIBRATED LIGHT **************************************************/
     // controlla file nella directory light (ritorna numero di immagini e dimensioni)
@@ -286,18 +263,177 @@ int main(int argc, char **argv) {
     //calibra immagini light
     t_start = cpuSecond();
     calibrateLights(light_all, master_bias, master_dark, master_flat, calib_all, light_width, light_height, light_count);
-    t_elapsed = cpuSecond()-t_start;
-    printf("GPU calibrate lights time: %f s\n", t_elapsed);
+    double time_calibrate_lights_gpu = cpuSecond()-t_start;
+    printf("  GPU calibrate lights time: %f s\n", time_calibrate_lights_gpu);
+
+
+
+    // ==================================================
+    // CPU Calibration
+    printf("\n==========================================\n");
+    printf("Calibration in CPU\n\n");
+
+    // Prefetch bias_all, dark_all, flat_all, light_all to CPU
+    CHECK(cudaMemPrefetchAsync(bias_all, bias_pixels*bias_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(dark_all, dark_pixels*dark_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(flat_all, flat_pixels*flat_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(light_all, light_pixels*light_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    // Wait for prefetch to complete before accessing memory
+    CHECK(cudaDeviceSynchronize());
+
+    /************************************************** 1) MASTER BIAS **************************************************/
+    // Controlla file nella directory bias (ritorna numero di immagini e dimensioni)
+    // Alloca memoria bias
+
+    // Alloca memoria per master bias finale (1 immagine)
+    u_int16_t *master_bias_cpu = (u_int16_t *)malloc(bias_pixels*sizeof(u_int16_t));
+    if (!master_bias_cpu) {
+        fprintf(stderr, "Error allocating memory for master bias CPU\n");
+        return 1;
+    }
+
+    // Calcola master bias
+    t_start = cpuSecond();
+    masterBias_cpu(bias_all, master_bias_cpu, bias_width, bias_height, bias_count);
+    double time_master_bias_cpu = cpuSecond()-t_start;
+    printf("  CPU master bias time: %f s\n", time_master_bias_cpu); 
+
+
+    /************************************************** 2) MASTER DARK **************************************************/
+
+    // Alloca memoria per master dark finale (1 immagine)
+    u_int16_t *master_dark_cpu = (u_int16_t *)malloc(dark_pixels*sizeof(u_int16_t));
+    if (!master_dark_cpu) {
+        fprintf(stderr, "Error allocating memory for master dark CPU\n");
+        return 1;
+    }  
+
+    //calcola master dark
+    t_start = cpuSecond();
+    masterDark_cpu(dark_all, master_bias_cpu, master_dark_cpu, dark_width, dark_height, dark_count);
+    double time_master_dark_cpu = cpuSecond()-t_start;
+    printf("  CPU master dark time: %f s\n", time_master_dark_cpu);
+
+
+    /************************************************** 3) MASTER FLAT **************************************************/
+
+    // Alloca memoria per master flat finale (1 immagine)
+    u_int16_t *master_flat_cpu = (u_int16_t *)malloc(flat_pixels*sizeof(u_int16_t));
+    if (!master_flat_cpu) {
+        fprintf(stderr, "Error allocating memory for master flat CPU\n");
+        return 1;
+    }
+
+    //calcola master flat
+    t_start = cpuSecond();
+    masterFlat_cpu(flat_all, master_bias_cpu, master_flat_cpu, flat_width, flat_height, flat_count);
+    double time_master_flat_cpu = cpuSecond()-t_start;
+    printf("  CPU master flat time: %f s\n", time_master_flat_cpu);
+
+
+    /************************************************** 4) CALIBRATED LIGHT **************************************************/
+
+    // Alloca memoria per immagini calibrate finali (light_count immagini)
+    u_int16_t *calib_all_cpu = (u_int16_t *)malloc(light_pixels*light_count*sizeof(u_int16_t));
+    if (!calib_all_cpu) {
+        fprintf(stderr, "Error allocating memory for calibrated images CPU\n");
+        return 1;
+    }
+
+    //calibra immagini light
+    t_start = cpuSecond();
+    calibrateLights_cpu(light_all, master_bias_cpu, master_dark_cpu, master_flat_cpu, calib_all_cpu, light_width, light_height, light_count);
+    double time_calibrate_lights_cpu = cpuSecond()-t_start;
+    printf("  CPU calibrate lights time: %f s\n", time_calibrate_lights_cpu);
+
+
+
+    // ==================================================
+    // Comparazione risultati
+    printf("\n==========================================\n");
+    printf("Comparing GPU and CPU results\n\n");
+
+    // 1. Comparazione master bias
+    int match = 0, mismatch = 0;
+    for (int i = 0; i < bias_pixels; i++) {
+        if (master_bias[i] == master_bias_cpu[i])
+            match++;
+        else
+            mismatch++;
+    }
+    printf("  Master Bias: \t\t%d matches, \t%d mismatches\n", match, mismatch);
+
+    // 2. Comparazione master dark
+    match = 0; mismatch = 0;
+    for (int i = 0; i < dark_pixels; i++) {
+        if (master_dark[i] == master_dark_cpu[i])
+            match++;
+        else
+            mismatch++;
+    }
+    printf("  Master Dark: \t\t%d matches, \t%d mismatches\n", match, mismatch);
+    
+    // 3. Comparazione master flat
+    match = 0; mismatch = 0;
+    for (int i = 0; i < flat_pixels; i++) {
+        if (master_flat[i] == master_flat_cpu[i])
+            match++;
+        else
+            mismatch++;
+    }
+    printf("  Master Flat: \t\t%d matches, \t%d mismatches\n", match, mismatch);
+    
+    // 4. Comparazione immagini calibrate
+    match = 0; mismatch = 0;
+    for (int i = 0; i < light_count*light_pixels; i++) {
+        if (calib_all[i] == calib_all_cpu[i])
+            match++;
+        else
+            mismatch++;
+    }
+    printf("  Calibrated Images: \t%d matches, \t%d mismatches\n", match, mismatch);
+
+    
+    // ==================================================
+    // Performance
+    printf("\n==========================================\n");
+    printf("Performance Comparison\n\n");
+
+    double speedup_master_bias = time_master_bias_cpu / time_master_bias_gpu;
+    double speedup_master_dark = time_master_dark_cpu / time_master_dark_gpu;
+    double speedup_master_flat = time_master_flat_cpu / time_master_flat_gpu;
+    double speedup_calibrate_lights = time_calibrate_lights_cpu / time_calibrate_lights_gpu;
+
+    printf("  Master Bias: \t\tGPU time = %f s, \tCPU time = %f s, \tSpeedup = %.1f x\n", time_master_bias_gpu, time_master_bias_cpu, speedup_master_bias);
+    printf("  Master Dark: \t\tGPU time = %f s, \tCPU time = %f s, \tSpeedup = %.1f x\n", time_master_dark_gpu, time_master_dark_cpu, speedup_master_dark);
+    printf("  Master Flat: \t\tGPU time = %f s, \tCPU time = %f s, \tSpeedup = %.1f x\n", time_master_flat_gpu, time_master_flat_cpu, speedup_master_flat);
+    printf("  Calibrate Lights: \tGPU time = %f s, \tCPU time = %f s, \tSpeedup = %.1f x\n\n", time_calibrate_lights_gpu, time_calibrate_lights_cpu, speedup_calibrate_lights);
+
+    double time_total_gpu = time_master_bias_gpu + time_master_dark_gpu + time_master_flat_gpu + time_calibrate_lights_gpu;
+    double time_total_cpu = time_master_bias_cpu + time_master_dark_cpu + time_master_flat_cpu + time_calibrate_lights_cpu;
+    double speedup_total = time_total_cpu / time_total_gpu;
+    printf("  Total: \t\tGPU time = %f s, \tCPU time = %f s, \tSpeedup = %.1f x\n\n\n", time_total_gpu, time_total_cpu, speedup_total);
+
+    // ==================================================
+    // Salva immagini FITS
+
+    // Salva master bias su FITS
+    char base_name[128];
+    snprintf(base_name, sizeof(base_name), "master_bias");
+    save_image_fits(out_dir, base_name, master_bias, bias_width, bias_height, 1);
+
+    // Salva master dark su FITS
+    snprintf(base_name, sizeof(base_name), "master_dark");
+    save_image_fits(out_dir, base_name, master_dark, dark_width, dark_height, 1);
+
+    // Salva master flat su FITS
+    snprintf(base_name, sizeof(base_name), "master_flat");
+    save_image_fits(out_dir, base_name, master_flat, flat_width, flat_height, 1);
 
     // Salva immagini calibrate su FITS
     for (int i = 0; i < light_count; i++) {
         snprintf(base_name, sizeof(base_name), "calibrated_%d", i);
-        u_int16_t *temp_calib = (u_int16_t*)malloc(light_pixels * sizeof(u_int16_t));
-        for (u_int64_t j = 0; j < light_pixels; j++) {
-            temp_calib[j] = std::min<u_int16_t>(std::max<u_int16_t>(calib_all[i*light_pixels + j], 0), 65535);
-        }
-        save_image_fits(out_dir, base_name, temp_calib, light_width, light_height, 1);
-        free(temp_calib);
+        save_image_fits(out_dir, base_name, &calib_all[i*light_pixels], light_width, light_height, 1);
     }
 
     // Libera memoria

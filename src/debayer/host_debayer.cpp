@@ -21,7 +21,7 @@ inline uint16_t clamp_u16(float v) {
 // CPU: Apply 5x5 kernel (MHC)
 // ============================================================================
 static inline float apply_kernel_5x5_cpu(
-    const uint16_t *gray,
+    const uint16_t* __restrict__ gray,
     long width,
     long height,
     long x,
@@ -30,9 +30,11 @@ static inline float apply_kernel_5x5_cpu(
 ) {
     float acc = 0.0f;
 
+    #pragma unroll
     for (int ky = -2; ky <= 2; ky++) {
         long yy = clamp_index(y + ky, 0, height - 1);
 
+        #pragma unroll
         for (int kx = -2; kx <= 2; kx++) {
             long xx = clamp_index(x + kx, 0, width - 1);
 
@@ -51,8 +53,8 @@ static inline float apply_kernel_5x5_cpu(
 // CPU: Bilinear debayering (RGGB pattern)
 // ============================================================================
 void demosaic_bilinear_rggb_cpu(
-    const uint16_t *gray_all,
-    uint16_t *rgb_all,
+    const uint16_t* __restrict__ gray_all,
+    uint16_t* __restrict__ rgb_all,
     long width, long height,
     uint16_t image_count
 ) {
@@ -129,8 +131,8 @@ void demosaic_bilinear_rggb_cpu(
 // CPU: Malvar-He-Cutler (MHC) debayering (RGGB pattern)
 // ============================================================================
 void demosaic_mhc_rggb_cpu(
-    const uint16_t * __restrict__ gray_all,
-    uint16_t * __restrict__ rgb_all,
+    const uint16_t* __restrict__ gray_all,
+    uint16_t* __restrict__ rgb_all,
     long width,
     long height,
     uint16_t image_count

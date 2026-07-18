@@ -46,36 +46,83 @@ struct threshold_params {
 
 // GPU
 
-void to_grayscale_planar_gpu(const u_int16_t *img, u_int16_t *img_gray, u_int64_t npixels);
+void to_grayscale_planar_gpu(
+    const u_int16_t* __restrict__ img,
+    u_int16_t* __restrict__ img_gray,
+    u_int64_t npixels
+);
 
-void compute_threshold_gpu(const u_int16_t *img, u_int8_t *out_img,
-                           u_int64_t width, u_int64_t height,
-                           threshold_params params);
+void compute_threshold_gpu(
+    const u_int16_t* __restrict__ img,
+    u_int8_t* __restrict__ out_img,
+    u_int64_t width,
+    u_int64_t height,
+    threshold_params params
+);
 
-void detect_stars_gpu(const u_int8_t *threshold_image, u_int64_t width, u_int64_t height,
-                      u_int16_t max_star_size, u_int16_t min_star_size,
-                      star *d_stars, u_int32_t *d_num_stars, u_int32_t max_stars);
+void detect_stars_gpu(
+    const u_int8_t* __restrict__ threshold_image,
+    u_int64_t width,
+    u_int64_t height,
+    u_int16_t max_star_size,
+    u_int16_t min_star_size,
+    star *d_stars,
+    u_int32_t *d_num_stars,
+    u_int32_t max_stars
+);
 
-void populate_star_details_gpu(star_detail *stars_details, star *stars, u_int32_t n_stars,
-                               const u_int16_t *img_rgb, const u_int16_t *img_gray,
-                               u_int64_t width, u_int64_t npixels);
+void populate_star_details_gpu(
+    star_detail* stars_details,
+    star* stars,
+    u_int32_t n_stars,
+    const u_int16_t* img_rgb,
+    const u_int16_t* img_gray,
+    u_int64_t width,
+    u_int64_t npixels
+);
 
 
 // CPU
-void to_grayscale_planar(const uint16_t *image, uint16_t* __restrict__ gray_image, uint64_t npixels);
+void to_grayscale_planar(
+    const uint16_t* image,
+    uint16_t* gray_image,
+    uint64_t npixels
+);
 
-void compute_threshold(const u_int16_t *img, u_int8_t* __restrict__ out_img,
-                       u_int64_t width, u_int64_t height,
-                       threshold_params params);
+void compute_threshold(
+    const u_int16_t* img,
+    u_int8_t* out_img,
+    u_int64_t width,
+    u_int64_t height,
+    threshold_params params
+);
 
-void detect_stars(const uint8_t *threshold_image, uint64_t width, uint64_t height,
-                  uint16_t max_star_size, uint16_t min_star_size,
-                  star *stars, uint32_t &num_stars, uint32_t max_stars);
+void detect_stars(
+    const uint8_t* threshold_image,
+    uint64_t width,
+    uint64_t height,
+    uint16_t max_star_size,
+    uint16_t min_star_size,
+    star *stars,
+    uint32_t &num_stars,
+    uint32_t max_stars
+);
 
-void populate_star_details(star_detail *stars_details, star *stars, u_int32_t n_stars,
-                               const u_int16_t *img_rgb, const u_int16_t *img_gray,
-                               u_int64_t width, u_int64_t npixels);
+void populate_star_details(
+    star_detail *stars_details,
+    star *stars,
+    u_int32_t n_stars,
+    const u_int16_t* img_rgb,
+    const u_int16_t* img_gray,
+    u_int64_t width,
+    u_int64_t npixels
+);
 
-void draw_stars(u_int16_t* __restrict__ img, u_int64_t width, const star *stars, u_int32_t n_stars);
+void draw_stars(
+    u_int16_t* img,
+    u_int64_t width,
+    const star *stars,
+    u_int32_t n_stars
+);
 
 #endif // STAR_FINDER_H

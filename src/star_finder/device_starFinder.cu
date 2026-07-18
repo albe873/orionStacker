@@ -346,8 +346,8 @@ void populate_star_details_gpu(star_detail *stars_details, star *stars, u_int32_
 
 
 void detect_stars_gpu(const u_int8_t *img, u_int64_t width, u_int64_t height,
-                      const u_int16_t max_star_size, const u_int16_t min_star_size,
-                      star *stars, u_int32_t *num_stars, const u_int32_t max_stars) {
+                      u_int16_t max_star_size, u_int16_t min_star_size,
+                      star *stars, u_int32_t *num_stars, u_int32_t max_stars) {
     dim3 block_size_2d(16, 16);
     dim3 grid_size_2d(  (width + block_size_2d.x - 1) / block_size_2d.x, 
                         (height + block_size_2d.y - 1) / block_size_2d.y

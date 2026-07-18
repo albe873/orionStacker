@@ -15,7 +15,7 @@ __device__ inline u_int16_t clamp_u16(float v) {
     return (u_int16_t)(v + 0.5f); // round-to-nearest
 }
 
-__global__ void demosaic_bilinear_rggb_kernel( const u_int16_t *gray_all, u_int16_t *rgb_all, long width, long height, u_int16_t image_count){
+__global__ void demosaic_bilinear_rggb_kernel( const u_int16_t* __restrict__ gray_all, u_int16_t* __restrict__ rgb_all, long width, long height, u_int16_t image_count){
     u_int64_t idx_global = blockIdx.x * blockDim.x + threadIdx.x;
     u_int64_t npixels = width * height;
     u_int64_t total_pixels = npixels * image_count;
@@ -146,7 +146,8 @@ __global__ void demosaic_mhc_rggb_kernel( const u_int16_t * __restrict__ gray_al
 
 // ------------ wrapper functions ------------
 
-void demosaic_bilinear_rggb(const u_int16_t *gray_all, u_int16_t *rgb_all, long width, long height, u_int16_t image_count) {
+void demosaic_bilinear_rggb(const u_int16_t* __restrict__ gray_all, u_int16_t * __restrict__ rgb_all,
+                            long width, long height, u_int16_t image_count) {
     u_int64_t npixels = width*height;
     dim3 block_size(512);
     dim3 grid_size((npixels*image_count + block_size.x - 1)/block_size.x);
@@ -154,7 +155,8 @@ void demosaic_bilinear_rggb(const u_int16_t *gray_all, u_int16_t *rgb_all, long 
     CHECK(cudaDeviceSynchronize());
 }
 
-void demosaic_mhc_rggb(const u_int16_t * __restrict__ gray_all, u_int16_t * __restrict__ rgb_all, long width, long height, u_int16_t image_count) {
+void demosaic_mhc_rggb(const u_int16_t* __restrict__ gray_all, u_int16_t * __restrict__ rgb_all,
+                       long width, long height, u_int16_t image_count) {
     u_int64_t npixels = (u_int64_t)width * (u_int64_t)height;
     dim3 block_size(512);
     dim3 grid_size((npixels*image_count + block_size.x - 1)/block_size.x);

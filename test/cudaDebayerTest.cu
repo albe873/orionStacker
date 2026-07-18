@@ -155,6 +155,8 @@ int main(int argc, char **argv) {
     printf("CPU\n");
 
     CHECK(cudaMemPrefetchAsync(gray_all, npixels*image_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaDeviceSynchronize());
+    
     // alloca memoria per il risultato CPU
     u_int16_t *rgb_cpu = (u_int16_t *)malloc(npixels*3*image_count*sizeof(u_int16_t));
     if (!rgb_cpu) {

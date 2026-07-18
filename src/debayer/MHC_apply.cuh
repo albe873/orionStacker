@@ -17,7 +17,7 @@ __device__ inline int clamp_index(int v, int lo, int hi) {
 // Ritorna il valore filtrato (float).
 // ============================================================================
 __device__ inline float apply_kernel_5x5(
-    const u_int16_t *gray,
+    const u_int16_t* __restrict__ gray,
     int width,
     int height,
     int x,

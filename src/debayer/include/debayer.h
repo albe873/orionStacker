@@ -8,15 +8,15 @@
 // GPU
 
 void demosaic_bilinear_rggb(
-    const u_int16_t *gray_all,
-    u_int16_t *rgb_all,
+    const u_int16_t* gray_all,
+    u_int16_t* rgb_all,
     long width, long height,
     u_int16_t image_count
 );
 
 void demosaic_mhc_rggb(
-    const u_int16_t * __restrict__ gray_all,
-    u_int16_t * __restrict__ rgb_all,
+    const u_int16_t* gray_all,
+    u_int16_t * rgb_all,
     long width,
     long height,
     u_int16_t image_count
@@ -26,15 +26,15 @@ void demosaic_mhc_rggb(
 // =========================
 // CPU
 void demosaic_bilinear_rggb_cpu(
-    const u_int16_t *gray_all,
-    u_int16_t *rgb_all,
+    const u_int16_t* gray_all,
+    u_int16_t* rgb_all,
     long width, long height,
     u_int16_t image_count
 );
 
 void demosaic_mhc_rggb_cpu(
-    const u_int16_t * __restrict__ gray_all,
-    u_int16_t * __restrict__ rgb_all,
+    const u_int16_t* gray_all,
+    u_int16_t * rgb_all,
     long width,
     long height,
     u_int16_t image_count

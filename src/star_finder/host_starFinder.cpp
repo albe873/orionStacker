@@ -9,7 +9,7 @@
 #include "star_finder.h"
 #include "host_otsu_centralized.cpp"
 
-void to_grayscale_planar(const uint16_t *image, uint16_t* __restrict__ gray_image, uint64_t npixels) {
+void to_grayscale_planar(const uint16_t* __restrict__ image, uint16_t* __restrict__ gray_image, uint64_t npixels) {
     for(uint64_t i = 0; i < npixels; i++) {
         uint16_t red = image[i];
         uint16_t green = image[i + npixels];
@@ -18,13 +18,13 @@ void to_grayscale_planar(const uint16_t *image, uint16_t* __restrict__ gray_imag
     }
 }
 
-void simple_threshold(const uint16_t *image, uint8_t* __restrict__ output, uint64_t npixels, uint16_t threshold) {
+void simple_threshold(const uint16_t* __restrict__ image, uint8_t* __restrict__ output, uint64_t npixels, uint16_t threshold) {
     for(uint64_t i = 0; i < npixels; i++) {
         output[i] = image[i] > threshold ? image[i] / 256 : 0;
     }
 }
 
-void adaptive_threshold(const uint16_t *image, uint8_t* __restrict__ output, uint64_t width, uint64_t height, 
+void adaptive_threshold(const uint16_t* __restrict__ image, uint8_t* __restrict__ output, uint64_t width, uint64_t height, 
                         uint16_t windowSize, uint16_t offset) {
     windowSize /= 2;
     for(uint64_t y = 0; y < height; y++) {
@@ -48,7 +48,7 @@ void adaptive_threshold(const uint16_t *image, uint8_t* __restrict__ output, uin
     }
 }
 
-void reduce_image(const uint16_t *image, uint16_t* __restrict__ reduced_image, uint64_t width, uint64_t height, 
+void reduce_image(const uint16_t* __restrict__ image, uint16_t* __restrict__ reduced_image, uint64_t width, uint64_t height, 
                   uint16_t reduce_factor) {
     uint64_t new_width = width / reduce_factor;
     uint64_t new_height = height / reduce_factor;
@@ -70,8 +70,8 @@ void reduce_image(const uint16_t *image, uint16_t* __restrict__ reduced_image, u
     }
 }
 
-void adaptive_threshold_approximate(const uint16_t *image, uint8_t* __restrict__ output, uint64_t width, 
-                                    uint64_t height, uint16_t *reduced_image, 
+void adaptive_threshold_approximate(const uint16_t* __restrict__ image, uint8_t* __restrict__ output, uint64_t width, 
+                                    uint64_t height, uint16_t* __restrict__ reduced_image, 
                                     uint16_t reduce_factor, uint16_t windowSize, 
                                     uint16_t offset) {
     windowSize /= 2;
@@ -155,7 +155,7 @@ inline void write_star(star *stars, u_int32_t &num_stars, u_int32_t max_stars,
     }
 }
 
-void detect_stars(const uint8_t *input, uint64_t width, uint64_t height, 
+void detect_stars(const uint8_t* __restrict__ input, uint64_t width, uint64_t height, 
                   uint16_t max_star_size, uint16_t min_star_size,
                   star *stars, uint32_t &num_stars, uint32_t max_stars) {
     
@@ -285,7 +285,7 @@ void detect_stars(const uint8_t *input, uint64_t width, uint64_t height,
 }
 
 
-void compute_threshold( const u_int16_t *img, u_int8_t *out_img,
+void compute_threshold( const u_int16_t* __restrict__ img, u_int8_t* __restrict__ out_img,
                         u_int64_t width, u_int64_t height, 
                         threshold_params params) {
     u_int64_t npixels = width * height;
@@ -324,7 +324,7 @@ void compute_threshold( const u_int16_t *img, u_int8_t *out_img,
 }
 
 
-void sum_brightness_planar(const u_int16_t *input_rgb, u_int64_t input_width, u_int64_t npixels, star s, star_detail *sd) {
+void sum_brightness_planar(const u_int16_t* __restrict__ input_rgb, u_int64_t input_width, u_int64_t npixels, star s, star_detail *sd) {
     uint64_t idx;
     for (uint64_t x = s.start_x; x < s.start_x + s.size_x; x++) {
         for (uint64_t y = s.start_y; y < s.start_y + s.size_y; y++) {
@@ -340,7 +340,7 @@ void sum_brightness_planar(const u_int16_t *input_rgb, u_int64_t input_width, u_
 }
 
 
-void baricenter_uint16_host(const u_int16_t *input_grayscale, u_int64_t input_width, star s, star_detail *sd) {
+void baricenter_uint16_host(const u_int16_t* __restrict__ input_grayscale, u_int64_t input_width, star s, star_detail *sd) {
     uint64_t idx;
     for (uint64_t x = s.start_x; x < s.start_x + s.size_x; x++) {
         for (uint64_t y = s.start_y; y < s.start_y + s.size_y; y++) {
@@ -355,7 +355,7 @@ void baricenter_uint16_host(const u_int16_t *input_grayscale, u_int64_t input_wi
 
 
 void populate_star_details(star_detail *stars_details, star *stars, u_int32_t n_stars, 
-                           const u_int16_t *img_rgb, const u_int16_t *img_gray,
+                           const u_int16_t* __restrict__ img_rgb, const u_int16_t* __restrict__ img_gray,
                            u_int64_t width, u_int64_t npixels) {
     // for each star, first I compute brightness then the baricenter
     // (I need the brightness sums to compute the baricenter)

@@ -225,6 +225,10 @@ int main(int argc, char **argv) {
     u_int16_t *gray_image_cpu = new u_int16_t[npixels];
     u_int8_t *threshold_image_cpu = new u_int8_t[npixels];
 
+    // prefetch fits_data to CPU
+    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaDeviceSynchronize());
+
     // 1 - grayscale
     t_start = cpuSecond();
     to_grayscale_planar(fits_data, gray_image_cpu, npixels);

@@ -83,7 +83,7 @@ function(add_cuda_hip_executable target_name cuda_source)
                     -I${CMAKE_SOURCE_DIR}/src/common/include
                     -I${CMAKE_SOURCE_DIR}/src/debayer/include
                     -I${CMAKE_SOURCE_DIR}/src/calibration/include
-                    -I${CMAKE_SOURCE_DIR}/src/stacker 
+                    -I${CMAKE_SOURCE_DIR}/src/stacker/include
                     -I${CMAKE_SOURCE_DIR}/src/star_finder
                     ${extra_includes}
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source}

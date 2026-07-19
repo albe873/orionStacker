@@ -1,6 +1,7 @@
 #ifndef CUDA_DEVICE_ALFA_SIGMA_H
 #define CUDA_DEVICE_ALFA_SIGMA_H
 
+#include "cuda_helper.h"
 
 // -------------- uint16_t version --------------
 
@@ -144,7 +145,7 @@ __device__ inline void filterPixels_uint16(u_int16_t mean, float std, u_int16_t 
 }
 
 
-__global__ void compute_alfa_sigma_uint16(u_int16_t **image, u_int16_t *mean, const u_int16_t numImages, const u_int64_t npixels, const float k, const u_int16_t s) {
+__global__ void kernel_alfa_sigma_uint16(u_int16_t **image, u_int16_t *mean, const u_int16_t numImages, const u_int64_t npixels, const float k, const u_int16_t s) {
     const u_int64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
     const u_int64_t idx2 = idx1 + 1;
 
@@ -169,6 +170,16 @@ __global__ void compute_alfa_sigma_uint16(u_int16_t **image, u_int16_t *mean, co
         computeMean_uint16(image, mean, idx1, numImages);
     }
 }
+
+
+void compute_alfa_sigma(u_int16_t **image, u_int16_t *mean, const u_int16_t numImages, const u_int64_t npixels, const float k, const u_int16_t s) {
+    dim3 block_size(512);
+    dim3 grid_size = (npixels / 2 + block_size.x - 1) / block_size.x;
+
+    kernel_alfa_sigma_uint16<<<grid_size, block_size>>>(image, mean, numImages, npixels, k, s);
+    cudaDeviceSynchronize();
+}
+
 
 // -------------- uint8_t version --------------
 

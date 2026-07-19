@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <string>
+#include <dirent.h>
 #include "include/common.h"
 #include "opencv2/imgcodecs.hpp"
 
@@ -226,4 +227,97 @@ void save_image_tiff(string output_dir_path, string file_name, u_int16_t *image_
     } else {
         printf("Saved TIFF %s\n", output_path.c_str());
     }
+}
+
+
+
+
+int check_directory(const char *dir_path, int *count, long *width, long *height, long *n_chan, long expect_n_chan = 0) {
+    DIR *dir = opendir(dir_path);
+    if (!dir) {
+        perror("opendir");
+        return 1;
+    }
+
+    struct dirent *entry;
+    int status=0;
+
+    // Conta e misura le immagini
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type != DT_REG) continue;
+
+        if (strstr(entry->d_name, ".fits") || strstr(entry->d_name, ".fit")) {
+            char path[1024];
+            snprintf(path, sizeof(path), "%s/%s", dir_path, entry->d_name);
+
+            fitsfile *fptr = nullptr;
+            open_fits(path, &fptr);
+            long w,h,n;
+            get_fits_dimensions(fptr, &w,&h,&n);
+            if (expect_n_chan > 0 && n != expect_n_chan) {
+                fprintf(stderr,"Skipping %s: expected %ld channel\n", path, expect_n_chan);
+                fits_close_file(fptr,&status);
+                continue;
+            }
+            if (*count == 0) {
+                *width=w;
+                *height=h;
+                *n_chan=n;
+            }
+            else if (w != *width || h != *height) {
+                fprintf(stderr,"Skipping %s: dimensions mismatch\n", path);
+                fits_close_file(fptr,&status);
+                continue;
+            }
+            fits_close_file(fptr,&status);
+            (*count)++;
+        }
+    }
+    closedir(dir);
+
+    if (*count == 0) {
+        fprintf(stderr,"No valid images\n");
+        return 1;
+    }
+    printf("  Found %d images\n", *count);
+    return 0;
+}
+
+// Rileggi le immagini e copia in memoria chiamando funzione esterna
+int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count) {
+    DIR *dir = opendir(dir_path);
+    if (!dir) {
+        perror("opendir");
+        return 1;
+    }
+
+    struct dirent *entry;
+    int status=0, idx=0;
+    long w, h, n;
+    long data_size = width * height * n_chan;
+    while ((entry = readdir(dir)) != NULL && idx<count) {
+        if (entry->d_type != DT_REG)
+            continue;
+        if (!(strstr(entry->d_name, ".fits") || strstr(entry->d_name, ".fit")))
+            continue;
+
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/%s", dir_path, entry->d_name);
+
+        fitsfile *fptr = nullptr;
+        open_fits(path, &fptr);
+
+        get_fits_dimensions(fptr, &w,&h,&n);
+        if (w != width || h != height || n != n_chan)
+            continue;
+
+        get_fits_data(fptr, data_size, img_all + idx*data_size);
+        fits_close_file(fptr,&status);
+
+        idx++;
+    }
+    if (idx != count)
+        printf("  Warning! Number of expected images: %d, Actually loaded: %d", count, idx);
+    closedir(dir);
+    return 0;
 }

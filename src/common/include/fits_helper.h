@@ -34,6 +34,25 @@ void get_fits_dimensions(fitsfile *fptr, long *width, long *height, long *n_chan
 */ 
 void get_fits_data(fitsfile *fptr, size_t npixels, u_int16_t *fits_data);
 
+/* controlla una directory, restituisce la dimensione della prima immagine trovata
+ * e il numero di immagini della stessa dimensione
+ * Possibile imporre un numero di canali per le immagini. Se il numero dei canali della prima immagine trovata
+ * la funziuone non troverà immagini
+*/
+int check_directory(const char *dir_path, int *count, long *width, long *height, long *n_chan, long expect_n_chan = 0);
+
+/* legge i dati di tutte le immagini fits in una cartella
+ * *** IMPORTANTE: fits_data deve essere allocato prima della chiamata ***
+ * le immagini devono essere della dimensione indicata alla chiamata
+*/
+int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count);
+
+/* Come load_images_to_memory
+ * con la possibilità di indicare un device a cui fare prefetch delle immagini
+*/
+int load_images_to_memory_prefetch(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count, int dev);
+
+
 /* stampa i metadati del file fits
 */
 void print_fits_metadata(fitsfile *fptr);

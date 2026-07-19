@@ -202,14 +202,16 @@ __global__ void calibrateLights_kernel(const u_int16_t* __restrict__ light_image
     if (idx >= npixels)
         return;
     
+    float to_subtract = (float)master_bias[idx] + (float)master_dark[idx];
+    u_int16_t flat_val = master_flat[idx];
+    
     for (uint i = 0; i < light_count; i++) {
-        float val = (float)light_images[i * npixels + idx] - (float)master_bias[idx] - (float)master_dark[idx];
+        float val = (float)light_images[i * npixels + idx] - to_subtract;
         if (val < 0.0f)
             val = 0.0f;
 
-        u_int16_t flat = master_flat[idx];
-        if (flat > 0) {
-            float scaled = (val * 65535.0f) / (float)flat;
+        if (flat_val > 0) {
+            float scaled = (val * 65535.0f) / (float)flat_val;
             calib_all[i * npixels + idx] = clamp_u16_from_f32(scaled);
         } else {
             calib_all[i * npixels + idx] = 0;

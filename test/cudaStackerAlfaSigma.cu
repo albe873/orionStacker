@@ -4,8 +4,7 @@
 #include "cuda_helper.h"
 #include "common.h"
 
-#include "device_alfa_sigma.h"
-#include "host_alfa_sigma.h"
+#include "stacker.h"
 
 #include <stdio.h>
 #include <dirent.h>
@@ -105,7 +104,6 @@ int main(int argc, char **argv) {
     
     int status;
     u_int16_t image_count = 0, image_num = 0;
-    dim3 block_size(512), grid_size;
     u_int64_t npixels;
 
     while ((entry = readdir(dir)) != NULL) {
@@ -122,8 +120,6 @@ int main(int argc, char **argv) {
                     print_fits_metadata(fptr);
                     get_fits_dimensions(fptr, &width, &height, &n_chan);
                     npixels = width * height * n_chan;
-                    grid_size = (npixels / 2 + block_size.x - 1) / block_size.x;
-                    printf("grid_size: %d, tot %d, wasted %lu\n", grid_size.x, grid_size.x * block_size.x, (grid_size.x * block_size.x) - npixels/2);
                 }
                 else {
                     get_fits_dimensions(fptr, &new_width, &new_height, &new_n_chan);
@@ -203,12 +199,7 @@ int main(int argc, char **argv) {
     
     printf("Computing mean with Alfa Sigma with GPU ...\n");
     t_start = cpuSecond();
-
-    compute_alfa_sigma_uint16<<<grid_size, block_size>>>(fits_data, mean, image_count, npixels, kappa, sigma);
-    CHECK(cudaGetLastError());  // Check for kernel launch errors
-
-    CHECK(cudaDeviceSynchronize());
-    
+    compute_alfa_sigma(fits_data, mean, image_count, npixels, kappa, sigma);
     t_elapsed = cpuSecond() - t_start;
     printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
     

@@ -5,8 +5,6 @@
 #include "debayer.h"
 
 #include <stdio.h>
-#include <dirent.h>
-#include <string.h>
 #include <getopt.h>
 
 int main(int argc, char **argv) {
@@ -50,48 +48,12 @@ int main(int argc, char **argv) {
     printf("Reading input dir\n");
 
     // Controlla file nella directory
-    DIR *dir = opendir(in_dir);
-    if (!dir) {
-        perror("  opendir");
-        exit(1);
-    }
-
-    struct dirent *entry;
     long width=0, height=0, n_chan=0;
-    int status=0;
     int image_count=0;
 
-    // Conta e misura le immagini
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type != DT_REG) continue;
-
-        if (strstr(entry->d_name, ".fits") || strstr(entry->d_name, ".fit")) {
-            char path[1024];
-            snprintf(path, sizeof(path), "%s/%s", in_dir, entry->d_name);
-
-            fitsfile *fptr = nullptr;
-            open_fits(path, &fptr);
-            long w,h,n;
-            get_fits_dimensions(fptr, &w,&h,&n);
-            if (n != 1) {
-                fprintf(stderr,"Skipping %s: expected 1 channel\n", path);
-                fits_close_file(fptr,&status);
-                continue;
-            }
-            if (image_count == 0) { width=w; height=h; n_chan=n; }
-            else if (w != width || h != height) {
-                fprintf(stderr,"Skipping %s: dimensions mismatch\n", path);
-                fits_close_file(fptr,&status);
-                continue;
-            }
-            fits_close_file(fptr,&status);
-            image_count++;
-        }
+    if (check_directory(in_dir, &image_count, &width, &height, &n_chan, 1) != 0) {
+        return 1;
     }
-    closedir(dir);
-
-    if (image_count == 0) { fprintf(stderr,"No valid images\n"); return 1; }
-    printf("  Found %d images\n", image_count);
 
     u_int64_t npixels = width*height;
 
@@ -100,33 +62,14 @@ int main(int argc, char **argv) {
     u_int16_t *rgb_all  = nullptr;
     CHECK(cudaMallocManaged(&gray_all, npixels*image_count*sizeof(u_int16_t)));
     CHECK(cudaMallocManaged(&rgb_all,  npixels*3*image_count*sizeof(u_int16_t)));
+    CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(u_int16_t), devLoc, 0));
 
     // Rileggi le immagini e copia in memoria
-    dir = opendir(in_dir);
-    if (!dir) {
-        perror("  opendir");
-        exit(1);
+    if (load_images_to_memory_prefetch(in_dir, gray_all, width, height, n_chan, image_count, dev) != 0) {
+        fprintf(stderr, "Error loading images\n");
+        return 1;
     }
 
-    int idx=0;
-    while ((entry = readdir(dir)) != NULL && idx<image_count) {
-        if (entry->d_type != DT_REG) continue;
-        if (!(strstr(entry->d_name, ".fits") || strstr(entry->d_name, ".fit"))) continue;
-
-        char path[1024];
-        snprintf(path, sizeof(path), "%s/%s", in_dir, entry->d_name);
-
-        fitsfile *fptr = nullptr;
-        open_fits(path, &fptr);
-        get_fits_data(fptr, npixels, gray_all + idx*npixels);
-        fits_close_file(fptr,&status);
-
-        CHECK(cudaMemPrefetchAsync(gray_all + idx*npixels, npixels*sizeof(u_int16_t), devLoc, 0));
-        idx++;
-    }
-    closedir(dir);
-
-    CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(u_int16_t), devLoc, 0));
     printf("  Loaded %d images of size %ldx%ld\n", image_count, width, height);
 
     // ==============================================

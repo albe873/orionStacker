@@ -55,4 +55,22 @@ void filterPixelsCPU(u_int16_t* __restrict__ mean, float* __restrict__ std, u_in
     }
 }
 
+
+void compute_alfa_sigma_cpu(
+    u_int16_t** __restrict__ image,
+    u_int16_t* __restrict__ mean,
+    float* __restrict__ std,
+    int numImages,
+    int npixels,
+    float kappa,
+    int sigma
+) {
+    for (int i = 0; i < sigma; i++) {
+        computeMeanCPU(image, mean, numImages, npixels);
+        computeStdDevCPU(std, mean, image, numImages, npixels);
+        filterPixelsCPU(mean, std, image, kappa, numImages, npixels);
+    }
+    computeMeanCPU(image, mean, numImages, npixels);
+}
+
 #endif // HOST_ALFA_SIGMA_H

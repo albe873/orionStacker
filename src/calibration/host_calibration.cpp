@@ -18,6 +18,7 @@ static inline uint16_t clamp_u16_from_u64(uint64_t x) {
 void masterBias_cpu(const uint16_t* __restrict__ bias_all, uint16_t* __restrict__ master_bias, long width, long height, int bias_count) {
     uint64_t npixels = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
     
+    #pragma omp parallel for
     for (uint64_t idx = 0; idx < npixels; idx++) {
         int c = 0;
         float acc = 0.0f;
@@ -36,6 +37,7 @@ void masterDark_cpu(const uint16_t* __restrict__ dark_all, const uint16_t* __res
     uint64_t npixels = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
     
     // For each pixel, subtract master bias and compute mean excluding values <= 0
+    #pragma omp parallel for
     for (uint64_t idx = 0; idx < npixels; idx++) {
         int c = 0;
         float acc = 0.0f;
@@ -54,6 +56,7 @@ void masterFlat_cpu(const uint16_t* __restrict__ flat_all, const uint16_t* __res
     uint64_t npixels = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
     
     // For each pixel, subtract master bias and compute mean excluding values <= 0
+    #pragma omp parallel for
     for (uint64_t idx = 0; idx < npixels; idx++) {
         int c = 0;
         float acc = 0.0f;
@@ -76,16 +79,16 @@ void masterFlat_cpu(const uint16_t* __restrict__ flat_all, const uint16_t* __res
     float mean_val = (sum > 0) ? (static_cast<float>(sum) / static_cast<float>(npixels)) : 0.0f;
     
     // Normalize master flat
+    // If mean_val == 0, leave master_flat as is (all 0), to avoid division by zero
+    // In calibrateLights_cpu, flat == 0 will be handled by setting calib to 0
     if (mean_val > 0.0f) {
         const float norm_scale = 65535.0f / mean_val;
+        #pragma omp parallel for
         for (uint64_t i = 0; i < npixels; i++) {
             // Store normalized flat in fixed-point scale [0, 65535].
             float scaled = static_cast<float>(master_flat[i]) * norm_scale;
             master_flat[i] = clamp_u16_from_f32(scaled);
         }
-    } else {
-        // If mean_val == 0, leave master_flat as is (all 0), to avoid division by zero
-        // In calibrateLights_cpu, flat == 0 will be handled by setting calib to 0
     }
 }
 
@@ -94,6 +97,7 @@ void calibrateLights_cpu(const uint16_t* __restrict__ light_all, const uint16_t*
     
     // For each pixel of each light image: calibrate = (light - master_bias - master_dark) / master_flat
     for (int i = 0; i < light_count; i++) {
+        #pragma omp parallel for
         for (uint64_t idx = 0; idx < npixels; idx++) {
             float val = static_cast<float>(light_all[i * npixels + idx]) 
                       - static_cast<float>(master_bias[idx]) 

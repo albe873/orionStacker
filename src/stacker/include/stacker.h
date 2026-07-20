@@ -1,9 +1,8 @@
 #ifndef STACKER_H
 #define STACKER_H
 
-
-void compute_alfa_sigma(
-    u_int16_t **image,
+void alfa_sigma(
+    u_int16_t *img_all,
     u_int16_t *mean,
     u_int16_t numImages,
     u_int64_t npixels,
@@ -11,14 +10,14 @@ void compute_alfa_sigma(
     u_int16_t s
 );
 
-void compute_alfa_sigma_cpu (
-    u_int16_t **image,
+void alfa_sigma_cpu(
+    u_int16_t *img_all,
     u_int16_t *mean,
-    u_int16_t numImages,
-    u_int64_t npixels,
-    float k,
-    u_int16_t s
+    float *std,
+    int numImages,
+    int npixels,
+    float kappa,
+    int sigma
 );
-
 
 #endif // STACKER_H

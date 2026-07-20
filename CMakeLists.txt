@@ -9,8 +9,8 @@ if (NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui features2d calib3d videoio flann)
-
 find_package(CUDAToolkit)
+find_package(OpenMP)
 
 if (CUDAToolkit_FOUND)
     message(STATUS "CUDAToolkit found: ${CUDAToolkit_VERSION}")

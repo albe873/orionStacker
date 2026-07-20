@@ -1,8 +1,8 @@
-#include "cuda_runtime.h"
 #include "fits_helper.h"
 #include "cuda_helper.h"
-#include "calibration.h"
 #include "common.h"
+
+#include "calibration.h"
 
 #include <stdio.h>
 #include <dirent.h>

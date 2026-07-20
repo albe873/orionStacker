@@ -1,5 +1,3 @@
-#include "cuda_runtime.h"
-
 #include "fits_helper.h"
 #include "cuda_helper.h"
 #include "common.h"
@@ -7,80 +5,65 @@
 #include "stacker.h"
 
 #include <stdio.h>
-#include <dirent.h>
 #include <string.h>
 #include <ctime>
 #include <getopt.h>
-#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 int main(int argc, char **argv) {
 
+    // ==================================================
     // Parsing degli argomenti
-
     const char *in_dir = NULL;
     const char *out_dir = ".";
     const char *file_name = "image";
 
-    int opt, option_index = 0;
-    long num;
-    float numf;
-    char *end;
-
-    float kappa = 3.0;
+    float kappa = 3.0f;
     u_int16_t sigma = 5;
 
+    int opt, option_index = 0;
     static struct option long_options[] = {
         {"input-directory", required_argument, 0, 'i'},
         {"output-directory", optional_argument, 0, 'o'},
-        {"file-name", optional_argument, 0, 'n'},
-        {"kappa", optional_argument, 0, 'k'},
-        {"sigma", optional_argument, 0, 's'},
+        {"file-name",       optional_argument, 0, 'n'},
+        {"kappa",           optional_argument, 0, 'k'},
+        {"sigma",           optional_argument, 0, 's'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "i:o:n:k:s", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:o:n:k:s:", long_options, &option_index)) != -1) {
         switch (opt) {
-            case 'i':
-                in_dir = optarg;
+            case 'i': in_dir   = optarg; break;
+            case 'o': out_dir  = optarg; break;
+            case 'n': file_name = optarg; break;
+            case 'k': {
+                char *end;
+                float v = strtof(optarg, &end);
+                if (end != optarg && v >= 0.0f && v <= 100.0f) kappa = v;
+                else fprintf(stderr, "Invalid kappa, using default %.1f\n", kappa);
                 break;
-            case 'o':
-                out_dir = optarg;
+            }
+            case 's': {
+                char *end;
+                long v = strtol(optarg, &end, 10);
+                if (end != optarg && v >= 0 && v <= 65535) sigma = (u_int16_t)v;
+                else fprintf(stderr, "Invalid sigma, using default %d\n", sigma);
                 break;
-            case 'n':
-                file_name = optarg;
-                break;
-            case 'k':
-                numf = strtof(optarg, &end);
-                if (end == optarg) {
-                    fprintf(stderr, "Invalid argument for kappa, using default\n");
-                } else if (numf < 0 || numf > 100) {
-                    fprintf(stderr, "Invalid argument for kappa, using default\n");
-                } else {
-                    kappa = numf;
-                }
-                break;
-            case 's':
-                num = strtol(optarg, &end, 10);
-                if (end == optarg) {
-                    fprintf(stderr, "Invalid argument for sigma, using default\n");
-                } else if (num < 0 || num > 65535) {
-                    fprintf(stderr, "Invalid argument for sigma, using default\n");
-                } else {
-                    sigma = num;
-                }
-                break;
+            }
             default:
-                fprintf(stderr, "Usage: %s --input-directory <input/dir>\n", argv[0]);
+                fprintf(stderr, "Usage: %s --input-directory <dir> [--output-directory <dir>] "
+                                "[--file-name <name>] [--kappa <f>] [--sigma <n>]\n", argv[0]);
                 return 1;
         }
     }
 
-    if (in_dir == nullptr || out_dir == nullptr) {
-        fprintf(stderr, "Usage: %s --input-directory </input/dir>\n", argv[0]);
+    if (!in_dir) {
+        fprintf(stderr, "Input directory required.\n");
         return 1;
     }
 
-
+    // ==================================================
     // Inizializza CUDA
     int dev = 0;
     cudaDeviceProp deviceProp;
@@ -88,133 +71,142 @@ int main(int argc, char **argv) {
     CHECK(cudaSetDevice(dev));
     PrefetchDeviceArg devLoc = make_prefetch_device_arg(dev);
 
-    // Apertura della cartella
+    // ==================================================
+    // Controlla directory e ottiene dimensioni / conteggio
     remove_trailing_slash((char *)in_dir);
-    DIR *dir;
-    struct dirent *entry;
-    if ((dir = opendir(in_dir)) == NULL) {
-        perror("opendir");
+
+    long width = 0, height = 0, n_chan = 0;
+    int image_count = 0;
+
+    printf("\n==========================\n");
+    printf("Reading directory\n");
+
+    if (check_directory(in_dir, &image_count, &width, &height, &n_chan, 0) != 0) {
+        fprintf(stderr, "Error checking input directory\n");
         return 1;
     }
 
-    // Scansione della cartella
+    u_int64_t npixels = (u_int64_t)width * height * n_chan;
 
-    fitsfile *fptr = nullptr;
-    long width, height, n_chan, new_width, new_height, new_n_chan;
-    
-    int status;
-    u_int16_t image_count = 0, image_num = 0;
-    u_int64_t npixels;
-
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
-            // Costruisce il percorso completo
-            char file_path[1024];
-            snprintf(file_path, sizeof(file_path), "%s/%s", in_dir, entry->d_name);
-
-            // Processa solo i file .fits
-            if (strstr(file_path, ".fits") != NULL || strstr(file_path, ".fit")) {
-                open_fits(file_path, &fptr);
-
-                if (image_num == 0) {
-                    print_fits_metadata(fptr);
-                    get_fits_dimensions(fptr, &width, &height, &n_chan);
-                    npixels = width * height * n_chan;
-                }
-                else {
-                    get_fits_dimensions(fptr, &new_width, &new_height, &new_n_chan);
-                    if (new_width != width || new_height != height || new_n_chan != n_chan) {
-                        fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
-                        fits_close_file(fptr, &status);
-                        continue;
-                    }
-                }
-
-                fits_close_file(fptr, &status);
-                image_num++;
-            }
-        }
+    if (image_count == 0) {
+        fprintf(stderr, "No valid FITS images found in %s\n", in_dir);
+        return 1;
     }
-    closedir(dir);
-
-    // Controllo del numero di immagini
-    if (image_num == 0) {
-        fprintf(stderr, "No valid images found in directory %s\n", in_dir);
-        exit(1);
-    } else if (image_num == 1) {
+    if (image_count == 1) {
         fprintf(stderr, "Only one image found, no stacking needed\n");
-        exit(0);
-    } else {
-        printf("Found %d images\n", image_num);
+        return 0;
     }
 
-    // Allocazione memoria unificata
+    printf("  Images of size %ldx%ld, %ld channel(s)\n", width, height, n_chan);
 
-    u_int16_t **fits_data = nullptr, *mean = nullptr;
+    // Allocazione memoria GPU
+    u_int16_t *img_all = nullptr;
+    CHECK(cudaMallocManaged(&img_all, (size_t)npixels * image_count * sizeof(u_int16_t)));
 
-    CHECK(cudaMallocManaged(&fits_data, image_num * sizeof(u_int16_t*)));
-    for (int i = 0; i < image_num; i++) {
-        CHECK(cudaMallocManaged(&fits_data[i], npixels * sizeof(u_int16_t)));
-    }
-
-    CHECK(cudaMallocManaged(&mean, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMemAdvise(mean, npixels * sizeof(u_int16_t), cudaMemAdviseSetPreferredLocation, devLoc));
-
-    // Lettura dei file .fits e caricamento dei dati in memoria (unificata)
-
-    if ((dir = opendir(in_dir)) == NULL) {
-        perror("opendir");
+    // Carica le immagini in memoria
+    printf("  Loading images ...\n");
+    if (load_images_to_memory_prefetch(in_dir, img_all, width, height, n_chan, image_count, dev) != 0) {
+        fprintf(stderr, "Error loading images\n");
         return 1;
     }
-    while ((entry = readdir(dir)) != NULL && image_count < image_num) {
-        if (entry->d_type == DT_REG) {  // Controlla se è un file regolare
-            // Costruisce il percorso completo
-            char file_path[1024];
-            snprintf(file_path, sizeof(file_path), "%s/%s", in_dir, entry->d_name);
+    printf("  Loaded %d images\n", image_count);
 
-            // Processa solo i file .fits
-            if (strstr(file_path, ".fits") != NULL || strstr(file_path, ".fit")) {
-                printf("Opening file: %s\n", file_path);
-                open_fits(file_path, &fptr);
+    // Alloca memoria per il risultato GPU
+    u_int16_t *mean_gpu = nullptr;
+    CHECK(cudaMallocManaged(&mean_gpu, (size_t)npixels * sizeof(u_int16_t)));
+    CHECK(cudaMemAdvise(mean_gpu, (size_t)npixels * sizeof(u_int16_t), cudaMemAdviseSetPreferredLocation, devLoc));
 
-                get_fits_dimensions(fptr, &new_width, &new_height, &new_n_chan);
-                if (new_width != width || new_height != height || new_n_chan != n_chan) {
-                    fprintf(stderr, "Skipping file %s due to mismatched dimensions.\n", file_path);
-                    fits_close_file(fptr, &status);
-                    continue;
-                }
+    // ==================================================
+    // GPU Alfa Sigma
+    printf("\n==========================\n");
+    printf("GPU\n");
 
-                get_fits_data(fptr, npixels, fits_data[image_count]);
-                CHECK(cudaMemPrefetchAsync(fits_data[image_count], npixels * sizeof(u_int16_t), devLoc, 0));
-                fits_close_file(fptr, &status);
-                image_count++;
+    double t_start = cpuSecond();
+    alfa_sigma(img_all, mean_gpu, (u_int16_t)image_count, npixels, kappa, sigma);
+    double time_gpu = cpuSecond() - t_start;
+    printf("  Alfa Sigma elapsed time: %f s\n", time_gpu);
+
+    // ==================================================
+    // Salva risultato GPU
+    printf("\n==========================\n");
+    printf("Saving GPU result\n");
+    save_image_fits(out_dir, file_name, mean_gpu, width, height, n_chan);
+    // save_image_tiff(out_dir, file_name, mean_gpu, width, height, n_chan);
+
+    // ==================================================
+    // CPU Alfa Sigma
+    // IMPORTANTE: Rileggiamo le immagini perché la GPU le ha modificate
+    printf("\n==========================\n");
+    printf("CPU\n");
+
+    // Alloca buffer flat per CPU e rilegge le immagini dal disco
+    u_int16_t *img_all_cpu = (u_int16_t *)malloc((size_t)npixels * image_count * sizeof(u_int16_t));
+    if (!img_all_cpu) {
+        fprintf(stderr, "Failed to allocate CPU memory\n");
+        return 1;
+    }
+
+    if (load_images_to_memory(in_dir, img_all_cpu, width, height, n_chan, image_count) != 0) {
+        fprintf(stderr, "Error loading images for CPU\n");
+        free(img_all_cpu);
+        return 1;
+    }
+
+    u_int16_t *mean_cpu = (u_int16_t *)malloc((size_t)npixels * sizeof(u_int16_t));
+    float    *std_cpu  = (float    *)malloc((size_t)npixels * sizeof(float));
+    if (!mean_cpu || !std_cpu) {
+        fprintf(stderr, "Failed to allocate CPU result memory\n");
+        free(img_all_cpu); free(mean_cpu); free(std_cpu);
+        return 1;
+    }
+
+    t_start = cpuSecond();
+    alfa_sigma_cpu(img_all_cpu, mean_cpu, std_cpu, image_count, (int)npixels, kappa, sigma);
+    double time_cpu = cpuSecond() - t_start;
+    printf("  CPU Alfa Sigma elapsed time: %f s\n", time_cpu);
+
+    // ==================================================
+    // Comparazione risultati
+    printf("\n==========================\n");
+    printf("Comparing results\n");
+
+    long errors = 0;
+    for (u_int64_t i = 0; i < npixels; i++) {
+        if (mean_gpu[i] != mean_cpu[i])
+            errors++;
+    }
+
+    if (errors == 0) {
+        printf("  GPU and CPU results match!\n");
+    } else {
+        printf("  GPU and CPU results differences: %ld / %lu pixels mismatch (%.4f%%)\n",
+               errors, (unsigned long)npixels, 100.0 * errors / npixels);
+        // Mostra alcuni dettagli
+        long shown = 0;
+        for (u_int64_t i = 0; i < npixels && shown < 10; i++) {
+            if (mean_gpu[i] != mean_cpu[i]) {
+                printf("    pixel[%lu]: GPU=%u  CPU=%u\n",
+                       (unsigned long)i, (unsigned)mean_gpu[i], (unsigned)mean_cpu[i]);
+                shown++;
             }
         }
     }
-    
-    closedir(dir);
-    double t_start, t_elapsed;
 
-    // Calcola la media con algoritmo Alfa Sigma
-    
-    printf("Computing mean with Alfa Sigma with GPU ...\n");
-    t_start = cpuSecond();
-    compute_alfa_sigma(fits_data, mean, image_count, npixels, kappa, sigma);
-    t_elapsed = cpuSecond() - t_start;
-    printf("GPU Alfa Sigma elapsed time: %f\n", t_elapsed);
-    
-    
-    //save_image_fits(out_dir, file_name, mean, width, height, n_chan);
-    save_image_tiff(out_dir, file_name, mean, width, height, n_chan);
+    // ==================================================
+    // Performance
+    printf("\n==========================\n");
+    printf("Performance:\n");
+    double speedup = time_cpu / time_gpu;
+    printf("  CPU time: %f s,\tGPU time: %f s,\tSpeedup: %f x\n", time_cpu, time_gpu, speedup);
 
-    // free memory
-    for (int i = 0; i < image_num; i++) {
-        CHECK(cudaFree(fits_data[i]));
-    }
-    CHECK(cudaFree(fits_data));
-    CHECK(cudaFree(mean));
+    // ==================================================
+    // Cleanup
+    CHECK(cudaFree(img_all));
+    CHECK(cudaFree(mean_gpu));
+    free(img_all_cpu);
+    free(mean_cpu);
+    free(std_cpu);
 
     CHECK(cudaDeviceReset());
-
-    exit(0);
+    return 0;
 }

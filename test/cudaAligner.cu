@@ -1,8 +1,7 @@
-#include "cuda_runtime.h"
-
 #include "fits_helper.h"
 #include "cuda_helper.h"
 #include "common.h"
+
 #include "star_finder.h"
 #include "debayer.h"
 

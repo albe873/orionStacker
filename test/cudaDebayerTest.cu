@@ -1,7 +1,7 @@
-#include "cuda_runtime.h"
-#include "common.h"
 #include "fits_helper.h"
 #include "cuda_helper.h"
+#include "common.h"
+
 #include "debayer.h"
 
 #include <stdio.h>

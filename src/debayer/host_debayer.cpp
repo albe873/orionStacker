@@ -65,6 +65,7 @@ void demosaic_bilinear_rggb_cpu(
         const uint16_t *gray = gray_all + img_idx * npixels;
         uint16_t *rgb = rgb_all + img_idx * npixels * 3;
 
+        #pragma omp parallel for
         for (long y = 0; y < height; ++y) {
             for (long x = 0; x < width; ++x) {
                 long pixel_idx = y * width + x;
@@ -143,6 +144,7 @@ void demosaic_mhc_rggb_cpu(
         const uint16_t *gray = gray_all + img_idx * npixels;
         uint16_t *rgb = rgb_all + img_idx * npixels * 3;
 
+        #pragma omp parallel for
         for (long y = 0; y < height; ++y) {
             for (long x = 0; x < width; ++x) {
                 long pixel_idx = y * width + x;

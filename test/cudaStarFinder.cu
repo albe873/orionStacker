@@ -1,5 +1,3 @@
-#include "cuda_runtime.h"
-
 #include "fits_helper.h"
 #include "cuda_helper.h"
 #include "common.h"

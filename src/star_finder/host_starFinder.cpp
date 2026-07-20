@@ -10,6 +10,7 @@
 #include "host_otsu_centralized.cpp"
 
 void to_grayscale_planar(const uint16_t* __restrict__ image, uint16_t* __restrict__ gray_image, uint64_t npixels) {
+    #pragma omp parallel for
     for(uint64_t i = 0; i < npixels; i++) {
         uint16_t red = image[i];
         uint16_t green = image[i + npixels];
@@ -19,6 +20,7 @@ void to_grayscale_planar(const uint16_t* __restrict__ image, uint16_t* __restric
 }
 
 void simple_threshold(const uint16_t* __restrict__ image, uint8_t* __restrict__ output, uint64_t npixels, uint16_t threshold) {
+    #pragma omp parallel for
     for(uint64_t i = 0; i < npixels; i++) {
         output[i] = image[i] > threshold ? image[i] / 256 : 0;
     }
@@ -27,6 +29,7 @@ void simple_threshold(const uint16_t* __restrict__ image, uint8_t* __restrict__ 
 void adaptive_threshold(const uint16_t* __restrict__ image, uint8_t* __restrict__ output, uint64_t width, uint64_t height, 
                         uint16_t windowSize, uint16_t offset) {
     windowSize /= 2;
+    #pragma omp parallel for
     for(uint64_t y = 0; y < height; y++) {
         //printf("Processing y %ld\n", y);
         for(uint64_t x = 0; x < width; x++) {
@@ -52,7 +55,8 @@ void reduce_image(const uint16_t* __restrict__ image, uint16_t* __restrict__ red
                   uint16_t reduce_factor) {
     uint64_t new_width = width / reduce_factor;
     uint64_t new_height = height / reduce_factor;
-
+    
+    #pragma omp parallel for
     for(uint64_t y = 0; y < new_height; y++) {
         for(uint64_t x = 0; x < new_width; x++) {
             uint32_t sum = 0;
@@ -75,6 +79,7 @@ void adaptive_threshold_approximate(const uint16_t* __restrict__ image, uint8_t*
                                     uint16_t reduce_factor, uint16_t windowSize, 
                                     uint16_t offset) {
     windowSize /= 2;
+    #pragma omp parallel for
     for(uint64_t y = 0; y < height; y++) {
         for(uint64_t x = 0; x < width; x++) {
             uint64_t startX = (x > windowSize ? x - windowSize : 0) / reduce_factor;
@@ -161,6 +166,7 @@ void detect_stars(const uint8_t* __restrict__ input, uint64_t width, uint64_t he
     
     const int8_t directions[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};  // variazione x e y per ogni direzione
 
+    #pragma omp parallel for
     for(uint64_t y = 0; y < height; y++) {
         for(uint64_t x = 0; x < width; x++) {
             uint64_t idx = y * width + x;
@@ -359,11 +365,13 @@ void populate_star_details(star_detail *stars_details, star *stars, u_int32_t n_
                            u_int64_t width, u_int64_t npixels) {
     // for each star, first I compute brightness then the baricenter
     // (I need the brightness sums to compute the baricenter)
+    #pragma omp parallel for
     for (u_int32_t i = 0; i < n_stars; i++) {
         init_star_detail(&stars_details[i]);
         sum_brightness_planar(img_rgb, width, npixels, stars[i], &stars_details[i]);
     } 
 
+    #pragma omp parallel for
     for (u_int32_t i = 0; i < n_stars; i++) {
         baricenter_uint16_host(img_gray, width, stars[i], &stars_details[i]);
     }

@@ -1,107 +1,109 @@
-// cpu_otsu_centralized.h
-// CPU-only implementation of Otsu threshold with centralization
-
-#ifndef CPU_OTSU_CENTRALIZED_H
-#define CPU_OTSU_CENTRALIZED_H
-
 #include <stdint.h>
 #include <cmath>
+#include <algorithm>
 
-// Constants
-#define OTSU_HISTOGRAM_SIZE 256
+#define OTSU_HISTOGRAM_SIZE 1024
 
 
-inline void cpu_calculate_histogram(const u_int16_t *image, u_int64_t npixels, double *histogram) {
-    // Initialize histogram
-    for (int i = 0; i < OTSU_HISTOGRAM_SIZE; i++) {
-        histogram[i] = 0.0;
-    }
-    
-    // Calculate histogram (8-bit values from 16-bit input)
+// ---------- find global min / max ----------
+inline void cpu_find_minmax(const u_int16_t *image, u_int64_t npixels,
+                            u_int16_t &out_min, u_int16_t &out_max) {
+    out_min = 65535;
+    out_max = 0;
     for (u_int64_t i = 0; i < npixels; i++) {
-        // Convert u_int16_t to u_int8_t by dividing by 256
-        u_int8_t pixel_value = (u_int8_t)(image[i] / 256);
-        histogram[pixel_value] += 1.0;
-    }
-    
-    // Normalize histogram to probabilities
-    for (int i = 0; i < OTSU_HISTOGRAM_SIZE; i++) {
-        histogram[i] /= (double)npixels;
+        if (image[i] < out_min)
+            out_min = image[i];
+        if (image[i] > out_max)
+            out_max = image[i];
     }
 }
 
-inline u_int8_t cpu_find_otsu_threshold(const double *histogram, u_int64_t npixels) {
-    double sum = 0.0;  // Sum of all pixel values * probability
-    
-    for (int t = 0; t < OTSU_HISTOGRAM_SIZE; t++) {
-        sum += t * histogram[t];
+
+inline void cpu_calculate_histogram(const u_int16_t *image, u_int64_t npixels,
+                                    double *histogram,
+                                    u_int16_t img_min, u_int16_t img_max) {
+    for (int i = 0; i < OTSU_HISTOGRAM_SIZE; i++)
+        histogram[i] = 0.0;
+
+    double scale = (double)(OTSU_HISTOGRAM_SIZE - 1) / (double)(img_max - img_min);
+
+    for (u_int64_t i = 0; i < npixels; i++) {
+        u_int16_t v = image[i];
+        if (v < img_min)
+            v = img_min;
+        if (v > img_max)
+            v = img_max;
+        int bin = (int)((double)(v - img_min) * scale);
+        histogram[bin] += 1.0;
     }
-    
-    double sum_B = 0.0;  // Sum for background class
-    double w_B = 0.0;    // Background class probability
+
+    // normalize to probabilities
+    for (int i = 0; i < OTSU_HISTOGRAM_SIZE; i++)
+        histogram[i] /= (double)npixels;
+}
+
+
+inline int cpu_find_otsu_threshold(const double *histogram) {
+    double sum_all = 0.0;
+    for (int i = 0; i < OTSU_HISTOGRAM_SIZE; i++)
+        sum_all += (double)i * histogram[i];
+
+    double sum_B = 0.0, w_B = 0.0;
     double max_variance = 0.0;
-    u_int8_t threshold = 0;
-    
-    // Find threshold that maximizes between-class variance
+    int threshold_bin = 0;
+
     for (int t = 0; t < OTSU_HISTOGRAM_SIZE; t++) {
         w_B += histogram[t];
-        
-        if (w_B == 0.0)
-            continue;
-        
-        double w_F = 1.0 - w_B;  // Foreground class probability
-        if (w_F == 0.0)
-            break;
-        
-        sum_B += t * histogram[t];
-        
+        if (w_B == 0.0) continue;
+
+        double w_F = 1.0 - w_B;
+        if (w_F == 0.0) break;
+
+        sum_B += (double)t * histogram[t];
+
         double mean_B = sum_B / w_B;
-        double mean_F = (sum - sum_B) / w_F;
-        
-        // Between-class variance
+        double mean_F = (sum_all - sum_B) / w_F;
         double variance = w_B * w_F * (mean_B - mean_F) * (mean_B - mean_F);
-        
+
         if (variance > max_variance) {
             max_variance = variance;
-            threshold = (u_int8_t)t;
+            threshold_bin = t;
         }
     }
-    
-    return threshold;
+    return threshold_bin;
+}
+
+
+// ---------- map OTSU bin index back to 16-bit value ----------
+inline double bin_to_value(int bin, u_int16_t img_min, u_int16_t img_max) {
+    return (double)img_min
+           + (double)bin * (double)(img_max - img_min)
+               / (double)(OTSU_HISTOGRAM_SIZE - 1);
 }
 
 
 inline double cpu_calculate_mean(const u_int16_t *image, u_int64_t width, u_int64_t height) {
     u_int64_t npixels = width * height;
     double sum = 0.0;
-    
-    for (u_int64_t i = 0; i < npixels; i++) {
+    for (u_int64_t i = 0; i < npixels; i++)
         sum += (double)image[i];
-    }
-    
     return sum / (double)npixels;
 }
 
-inline void mean_filter(const u_int16_t *image, double *temp_filtered, 
-                        u_int64_t width, u_int64_t height, u_int64_t npixels, 
+
+inline void mean_filter(const u_int16_t *image, double *temp_filtered,
+                        u_int64_t width, u_int64_t height, u_int64_t npixels,
                         int window_size) {
-    // Optimized using integral image (summed area table) - O(width * height)
-    // instead of O(width * height * window_size^2)
-    
     int half_window = window_size / 2;
-    
-    // Step 1: Build integral image (summed area table)
-    // integral[y][x] = sum of all pixels in rectangle (0,0) to (x,y)
+
+    // 1. integral image
     double *integral = new double[npixels];
-    
-    // First row
+
     double row_sum = 0.0;
     for (u_int64_t x = 0; x < width; x++) {
         row_sum += (double)image[x];
         integral[x] = row_sum;
     }
-    
-    // Remaining rows
     for (u_int64_t y = 1; y < height; y++) {
         row_sum = 0.0;
         u_int64_t row_offset = y * width;
@@ -111,43 +113,37 @@ inline void mean_filter(const u_int16_t *image, double *temp_filtered,
             integral[row_offset + x] = integral[prev_row_offset + x] + row_sum;
         }
     }
-    
-    // Step 2: Compute mean for each pixel using integral image in O(1)
+
+    // 2. O(1) mean per pixel
     for (u_int64_t y = 0; y < height; y++) {
         for (u_int64_t x = 0; x < width; x++) {
             u_int64_t idx = y * width + x;
-            
-            // Calculate window bounds
+
             int64_t y1 = y - half_window;
             if (y1 < 0)
                 y1 = 0;
-
             int64_t y2 = y + half_window;
-            if (y2 >= height)
+            if (y2 >= (int64_t)height)
                 y2 = height - 1;
-
             int64_t x1 = x - half_window;
             if (x1 < 0)
-                 x1 = 0;
-            
+                x1 = 0;
             int64_t x2 = x + half_window;
-            if (x2 >= width)
+            if (x2 >= (int64_t)width) 
                 x2 = width - 1;
-            
-            // Get sum from integral image using inclusion-exclusion
+
             double sum = integral[y2 * width + x2];
-            if (y1 > 0) 
+            if (y1 > 0)
                 sum -= integral[(y1 - 1) * width + x2];
-            if (x1 > 0) 
+            if (x1 > 0)
                 sum -= integral[y2 * width + (x1 - 1)];
             if (y1 > 0 && x1 > 0)
                 sum += integral[(y1 - 1) * width + (x1 - 1)];
-            
+
             double count = (double)((y2 - y1 + 1) * (x2 - x1 + 1));
             temp_filtered[idx] = sum / count;
         }
     }
-    
     delete[] integral;
 }
 
@@ -156,35 +152,36 @@ void cpu_otsu_centralized_threshold(const u_int16_t *image, u_int8_t *output,
                                     u_int64_t width, u_int64_t height,
                                     u_int16_t window_size, float tr_scale) {
     u_int64_t npixels = width * height;
-    
-    // 1 - Calculate histogram and find Otsu threshold
+
+    // 0 - find image min / max
+    u_int16_t img_min, img_max;
+    cpu_find_minmax(image, npixels, img_min, img_max);
+    if (img_max <= img_min) img_max = img_min + 1;
+
+    // 1 - histogram + Otsu (bin index)
     double *histogram = new double[OTSU_HISTOGRAM_SIZE];
-    cpu_calculate_histogram(image, npixels, histogram);
-    int otsu_threshold = cpu_find_otsu_threshold(histogram, npixels);
-    otsu_threshold = otsu_threshold * tr_scale;
+    cpu_calculate_histogram(image, npixels, histogram, img_min, img_max);
+    int otsu_bin = cpu_find_otsu_threshold(histogram);
     delete[] histogram;
-    
-    // 2 - Calculate global mean
+
+    // bin index -> threshold value
+    double otsu_threshold = bin_to_value(otsu_bin, img_min, img_max);
+    otsu_threshold *= (double)tr_scale;
+
+    // 2 - global mean
     double global_mean = cpu_calculate_mean(image, width, height);
-    
-    // 3 - Create mean filtered image
+
+    // 3 - local mean via integral image
     double *mean_filtered = new double[npixels];
     mean_filter(image, mean_filtered, width, height, npixels, window_size);
-    
-    // 4 - Apply centralized threshold
-    // T_c[i,j] = M_f[i,j] - t_mean + t_otsu
-    for (u_int64_t i = 0; i < npixels; i++) {
-        // Convert 16-bit pixel to 8-bit
-        int pixel_8bit = image[i] / 256;
-        int mean_8bit = global_mean / 256;
-        int filtered_8bit = mean_filtered[i] / 256;
 
-        int pixel_threshold = filtered_8bit - mean_8bit + otsu_threshold;
-        
-        output[i] = (pixel_8bit > pixel_threshold) ? 255 : 0;
+    // 4 - centralized threshold
+    for (u_int64_t i = 0; i < npixels; i++) {
+        double pixel_val       = (double)image[i];
+        double filtered_val    = mean_filtered[i];
+        double pixel_threshold = filtered_val - global_mean + otsu_threshold;
+        output[i] = (pixel_val > pixel_threshold) ? 255 : 0;
     }
-    
+
     delete[] mean_filtered;
 }
-
-#endif // CPU_OTSU_CENTRALIZED_H

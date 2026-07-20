@@ -126,7 +126,7 @@ bool build_star_descriptors(const star_detail *stars,
 
     for (u_int32_t i = 0; i < count; i++) {
         const float xi = static_cast<float>(stars[i].x);
-        const float yi = static_cast<float>(height - stars[i].y);
+        const float yi = static_cast<float>(stars[i].y);
 
         float best_d2_1 = std::numeric_limits<float>::max();
         float best_d2_2 = std::numeric_limits<float>::max();
@@ -139,7 +139,7 @@ bool build_star_descriptors(const star_detail *stars,
             }
 
             const float dx = static_cast<float>(stars[j].x) - xi;
-            const float dy = static_cast<float>(height - stars[j].y) - yi;
+            const float dy = static_cast<float>(stars[j].y) - yi;
             const float d2 = dx * dx + dy * dy;
 
             if (d2 < best_d2_1) {
@@ -158,9 +158,9 @@ bool build_star_descriptors(const star_detail *stars,
         }
 
         const float x1 = static_cast<float>(stars[idx1].x);
-        const float y1 = static_cast<float>(height - stars[idx1].y);
+        const float y1 = static_cast<float>(stars[idx1].y);
         const float x2 = static_cast<float>(stars[idx2].x);
-        const float y2 = static_cast<float>(height - stars[idx2].y);
+        const float y2 = static_cast<float>(stars[idx2].y);
 
         const float v1x = x1 - xi;
         const float v1y = y1 - yi;
@@ -225,7 +225,7 @@ bool build_star_descriptors_generalized(const star_detail *stars,
 
     for (u_int32_t i = 0; i < count; i++) {
         const float xi = static_cast<float>(stars[i].x);
-        const float yi = static_cast<float>(height - stars[i].y);
+        const float yi = static_cast<float>(stars[i].y);
 
         std::vector<std::pair<float, int>> d2_with_idx;
         d2_with_idx.reserve(count > 0 ? count - 1 : 0);
@@ -236,7 +236,7 @@ bool build_star_descriptors_generalized(const star_detail *stars,
             }
 
             const float dx = static_cast<float>(stars[j].x) - xi;
-            const float dy = static_cast<float>(height - stars[j].y) - yi;
+            const float dy = static_cast<float>(stars[j].y) - yi;
             const float d2 = dx * dx + dy * dy;
             d2_with_idx.emplace_back(d2, static_cast<int>(j));
         }
@@ -261,7 +261,7 @@ bool build_star_descriptors_generalized(const star_detail *stars,
         for (int k = 0; k < neighbors; k++) {
             const int idx = d2_with_idx[k].second;
             const float xk = static_cast<float>(stars[idx].x);
-            const float yk = static_cast<float>(height - stars[idx].y);
+            const float yk = static_cast<float>(stars[idx].y);
 
             const float vx = xk - xi;
             const float vy = yk - yi;
@@ -312,6 +312,29 @@ bool build_star_descriptors_generalized(const star_detail *stars,
     return true;
 }
 
+// Apply affine transform to planar RGB data (separate R, G, B planes)
+// Avoids merge/split overhead by processing each plane independently
+void warp_affine_planar(const u_int16_t *source, u_int16_t *dest,
+                        const cv::Mat &affine_2x3, long width, long height,
+                        int interpolation = cv::INTER_LINEAR,
+                        int border_mode = cv::BORDER_CONSTANT,
+                        u_int16_t border_value = 0) {
+    // Create cv::Mat headers for each plane (no data copy)
+    long npixels = width * height;
+    cv::Mat source_r(height, width, CV_16UC1, const_cast<u_int16_t*>(source));
+    cv::Mat source_g(height, width, CV_16UC1, const_cast<u_int16_t*>(source + npixels));
+    cv::Mat source_b(height, width, CV_16UC1, const_cast<u_int16_t*>(source + 2*npixels));
+    
+    cv::Mat dest_r(height, width, CV_16UC1, dest);
+    cv::Mat dest_g(height, width, CV_16UC1, dest + npixels);
+    cv::Mat dest_b(height, width, CV_16UC1, dest + 2*npixels);
+    
+    // Apply same affine transform to each plane
+    cv::warpAffine(source_r, dest_r, affine_2x3, cv::Size(width, height), interpolation, border_mode, cv::Scalar(border_value));
+    cv::warpAffine(source_g, dest_g, affine_2x3, cv::Size(width, height), interpolation, border_mode, cv::Scalar(border_value));
+    cv::warpAffine(source_b, dest_b, affine_2x3, cv::Size(width, height), interpolation, border_mode, cv::Scalar(border_value));
+}
+
 cv::Mat draw_star_boxes(const cv::Mat &base_gray, const star *stars, u_int32_t count) {
     cv::Mat vis;
     cv::cvtColor(base_gray, vis, cv::COLOR_GRAY2BGR);
@@ -360,10 +383,11 @@ int main(int argc, char **argv) {
     char *end;
 
     threshold_params t_par;
-    t_par.type = TR_SIMPLE;
-    t_par.threshold = 1500;
-    t_par.window_size = 255;
-    t_par.reduce_factor = 8;
+        t_par.type = OTSU_CENTRALIZED;
+        t_par.threshold = 1500;
+        t_par.window_size = 201;
+        t_par.reduce_factor = 8;
+        t_par.threshold_scale = 0.8f;
 
     u_int16_t max_star_size = 100;
     u_int16_t min_star_size = 10;
@@ -534,8 +558,8 @@ int main(int argc, char **argv) {
         CHECK(cudaMemPrefetchAsync(rgb_data2, npixels * 3 * sizeof(u_int16_t), devLoc, 0));
 
         // For mono input, debayer first to obtain RGB planes expected by the rest of pipeline.
-        demosaic_mhc_rggb(fits_data1, rgb_data1, width, height, 1);
-        demosaic_mhc_rggb(fits_data2, rgb_data2, width, height, 1);
+        demosaic_bilinear_rggb_cpu(fits_data1, rgb_data1, width, height, 1);
+        demosaic_bilinear_rggb_cpu(fits_data2, rgb_data2, width, height, 1);
     }
 
     to_grayscale_planar_gpu(rgb_data1, gray_image1, npixels);
@@ -547,26 +571,8 @@ int main(int argc, char **argv) {
     print_u16_stats("Gray2 stats", gray_image2, npixels);
 
     t_start = cpuSecond();
-    threshold_params t_par1 = t_par;
-    threshold_params t_par2 = t_par;
-
-    if (channels == 1 && t_par.type == TR_SIMPLE) {
-        const u_int16_t min_gray1 = min_u16_value(gray_image1, npixels);
-        const u_int16_t min_gray2 = min_u16_value(gray_image2, npixels);
-        const u_int32_t eff1 = static_cast<u_int32_t>(min_gray1) + static_cast<u_int32_t>(t_par.threshold);
-        const u_int32_t eff2 = static_cast<u_int32_t>(min_gray2) + static_cast<u_int32_t>(t_par.threshold);
-
-        t_par1.threshold = static_cast<u_int16_t>(std::min<u_int32_t>(eff1, 65535u));
-        t_par2.threshold = static_cast<u_int16_t>(std::min<u_int32_t>(eff2, 65535u));
-
-        printf("Mono debayer mode: using background-relative thresholds: img1=%u img2=%u (base + %u)\n",
-               static_cast<unsigned>(t_par1.threshold),
-               static_cast<unsigned>(t_par2.threshold),
-               static_cast<unsigned>(t_par.threshold));
-    }
-
-    compute_threshold_gpu(gray_image1, threshold_image1, width, height, t_par1);
-    compute_threshold_gpu(gray_image2, threshold_image2, width, height, t_par2);
+    compute_threshold_gpu(gray_image1, threshold_image1, width, height, t_par);
+    compute_threshold_gpu(gray_image2, threshold_image2, width, height, t_par);
     t_elapsed = cpuSecond() - t_start;
     printf("Threshold done - time: %f\n", t_elapsed);
     print_u8_threshold_stats("Threshold1 stats", threshold_image1, npixels);
@@ -741,15 +747,14 @@ int main(int argc, char **argv) {
     }
 
     if (!affine_2x3.empty() && inlier_matches.size() >= 3) {
-            cv::Mat img2_aligned;
-            cv::warpAffine(img2_u8, img2_aligned, affine_2x3, img1_u8.size());
+            // Allocate output buffers for aligned RGB planar data
+            u_int16_t *aligned = nullptr;
+            CHECK(cudaMallocManaged(&aligned, npixels * sizeof(u_int16_t) * 3));
             
-            const std::string aligned_out_path = out_dir + "/aligned_image2.png";
-            if (!cv::imwrite(aligned_out_path, img2_aligned)) {
-                fprintf(stderr, "Failed to write aligned image %s\n", aligned_out_path.c_str());
-            } else {
-                printf("Saved aligned image preview: %s\n", aligned_out_path.c_str());
-            }
+            warp_affine_planar(rgb_data2, aligned, affine_2x3, width, height);
+            
+            save_image_fits(out_dir, "aligned_image2", aligned, width, height, 3);
+            CHECK(cudaFree(aligned));
     } else {
         fprintf(stderr, "Not enough inlier matches to compute affine transform (need at least 3).\n");
     }

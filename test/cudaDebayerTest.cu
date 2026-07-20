@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
     printf("GPU\n");
 
     double t_start = cpuSecond();
-    demosaic_mhc_rggb(gray_all, rgb_all, width, height, image_count);
+    demosaic_bilinear_rggb(gray_all, rgb_all, width, height, image_count);
     double time_gpu = cpuSecond()-t_start;
     printf("  debayer done - time: %f s\n", time_gpu);
 
@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
 
 
     t_start = cpuSecond();
-    demosaic_mhc_rggb_cpu(gray_all, rgb_cpu, width, height, image_count);
+    demosaic_bilinear_rggb_cpu(gray_all, rgb_cpu, width, height, image_count);
     double time_cpu = cpuSecond()-t_start;
     printf("  debayer done - time: %f s\n", time_cpu);
 

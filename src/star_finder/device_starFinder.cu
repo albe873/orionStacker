@@ -7,6 +7,7 @@
 #include "star_finder.h"
 #include "device_threshold.cu"
 #include "device_otsu_centralized.cu"
+#include "device_warp.cu"
 
 __global__ void sum_brightness_planar_uint16(const u_int16_t *input_rgb, u_int64_t input_width, u_int64_t npixels, 
                                       star s, star_detail *sd) {

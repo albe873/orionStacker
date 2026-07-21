@@ -28,6 +28,19 @@ void open_fits(string file_path, fitsfile **fptr);
 */ 
 void get_fits_dimensions(fitsfile *fptr, long *width, long *height, long *n_chan);
 
+/* Legge il campo DATE-AVG (o DATE-OBS come fallback) dai metadati FITS
+ * e restituisce un timestamp Unix (double, secondi) in UTC.
+ * Ritorna 0.0 se il campo non è presente o non è parsabile.
+ */
+double get_fits_date_avg(fitsfile *fptr);
+
+/* Dato un array di timestamp e il numero di elementi, restituisce
+ * l'indice dell'elemento con il timestamp mediano (quello "in mezzo").
+ * Utile per scegliere l'immagine di riferimento per l'allineamento.
+ * Ritorna -1 se count <= 0.
+ */
+int find_mid_image_index(const double *timestamps, int count);
+
 
 /* legge i dati dell'immagine fits
  * *** IMPORTANTE: fits_data deve essere allocato prima della chiamata ***
@@ -44,13 +57,15 @@ int check_directory(const char *dir_path, int *count, long *width, long *height,
 /* legge i dati di tutte le immagini fits in una cartella
  * *** IMPORTANTE: fits_data deve essere allocato prima della chiamata ***
  * le immagini devono essere della dimensione indicata alla chiamata
+ * Se timestamps != nullptr, viene popolato con i timestamp di scatto
+ * (DATE-AVG o DATE-OBS) di ogni immagine caricata.
 */
-int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count);
+int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count, double *timestamps = nullptr);
 
 /* Come load_images_to_memory
  * con la possibilità di indicare un device a cui fare prefetch delle immagini
 */
-int load_images_to_memory_prefetch(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count, int dev);
+int load_images_to_memory_prefetch(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count, int dev, double *timestamps = nullptr);
 
 
 /* stampa i metadati del file fits
@@ -61,6 +76,12 @@ void print_fits_metadata(fitsfile *fptr);
  * Nota: l'immagine deve essere in formato planare
 */
 void save_image_fits(string output_dir_path, string file_name, u_int16_t *image_data, long width, long height, long n_chan);
+
+/* trova il file master calibration più recente in una directory
+ * cerca file con pattern master_bias_*.fits, master_dark_*.fits, master_flat_*.fits
+ * restituisce true se trovato e popola file_path con il percorso completo
+*/
+bool find_latest_master_file(const string &dir_path, const string &master_type, string &file_path);
 
 /* salva un'immagine in formato tiff, 
  * per maggiore compatibilità in fasi future di editing/visualizzazione

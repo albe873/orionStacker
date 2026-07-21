@@ -34,3 +34,9 @@ endif()
 # ===== features =====
 add_executable(features features.cpp)
 target_link_libraries(features   ${OpenCV_LIBS})
+
+# ===== testAll =====
+if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
+    add_cuda_hip_executable(testAll testAll.cu)
+    target_link_libraries(testAll common calibration debayer starFinder stacker cfitsio m)
+endif()

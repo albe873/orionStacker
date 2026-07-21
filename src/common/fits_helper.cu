@@ -6,7 +6,7 @@
 
 int load_images_to_memory_prefetch(const char *dir_path, u_int16_t *img_all,
                                    long width, long height, long n_chan,
-                                   int count, int dev) {
+                                   int count, int dev, double *timestamps) {
     DIR *dir = opendir(dir_path);
     if (!dir) {
         perror("opendir");
@@ -32,8 +32,14 @@ int load_images_to_memory_prefetch(const char *dir_path, u_int16_t *img_all,
         open_fits(path, &fptr);
 
         get_fits_dimensions(fptr, &w, &h, &n);
-        if (w != width || h != height || n != n_chan)
+        if (w != width || h != height || n != n_chan) {
+            fits_close_file(fptr, &status);
             continue;
+        }
+
+        if (timestamps != nullptr) {
+            timestamps[idx] = get_fits_date_avg(fptr);
+        }
 
         get_fits_data(fptr, data_size, img_all + idx * data_size);
         fits_close_file(fptr, &status);

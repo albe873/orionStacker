@@ -108,10 +108,20 @@ endfunction()
 
 function(add_cuda_hip_library target_name cuda_source)
     set(extra_includes "")
+    set(extra_include_dirs "")
     get_directory_property(_caller_include_dirs INCLUDE_DIRECTORIES)
     foreach(inc_dir IN LISTS _caller_include_dirs)
+        list(APPEND extra_include_dirs ${inc_dir})
         list(APPEND extra_includes "-I${inc_dir}")
     endforeach()
+
+    # Auto-propagate OpenCV includes when available in the caller scope.
+    if (DEFINED OpenCV_INCLUDE_DIRS)
+        foreach(cv_inc IN LISTS OpenCV_INCLUDE_DIRS)
+            list(APPEND extra_include_dirs ${cv_inc})
+            list(APPEND extra_includes "-I${cv_inc}")
+        endforeach()
+    endif()
 
     if(ROCM)
         # Hipify the CUDA file
@@ -135,6 +145,7 @@ function(add_cuda_hip_library target_name cuda_source)
     target_include_directories(${target_name} PRIVATE 
         ${CMAKE_CURRENT_SOURCE_DIR}  # For local headers
         ${CMAKE_SOURCE_DIR}/src      # For common headers like ../common/fits_api.h
+        ${extra_include_dirs}
     )
     
     # Make include directories available to targets that link to this library

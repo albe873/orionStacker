@@ -35,22 +35,6 @@ cv::Mat normalize_u16_to_u8(const u_int16_t *img, int width, int height) {
     return out_u8;
 }
 
-u_int16_t min_u16_value(const u_int16_t *img, u_int64_t npixels) {
-    if (npixels == 0) {
-        return 0;
-    }
-
-    u_int16_t min_v = std::numeric_limits<u_int16_t>::max();
-    for (u_int64_t i = 0; i < npixels; i++) {
-        min_v = std::min(min_v, img[i]);
-    }
-    return min_v;
-}
-
-inline float clamp(float v, float lo, float hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
 void print_u16_stats(const char *label, const u_int16_t *img, u_int64_t npixels) {
     if (npixels == 0) {
         printf("%s: empty\n", label);
@@ -70,269 +54,13 @@ void print_u16_stats(const char *label, const u_int16_t *img, u_int64_t npixels)
     printf("%s: min=%u max=%u mean=%.2f\n", label, static_cast<unsigned>(min_v), static_cast<unsigned>(max_v), mean);
 }
 
-void print_u8_threshold_stats(const char *label, const u_int8_t *img, u_int64_t npixels) {
-    if (npixels == 0) {
-        printf("%s: empty\n", label);
-        return;
-    }
 
-    u_int64_t zero = 0;
-    u_int64_t non_zero = 0;
-    u_int8_t min_v = std::numeric_limits<u_int8_t>::max();
-    u_int8_t max_v = 0;
-    for (u_int64_t i = 0; i < npixels; i++) {
-        const u_int8_t v = img[i];
-        min_v = std::min(min_v, v);
-        max_v = std::max(max_v, v);
-        if (v == 0) {
-            zero++;
-        } else {
-            non_zero++;
-        }
-    }
-
-    const double zero_pct = 100.0 * static_cast<double>(zero) / static_cast<double>(npixels);
-    const double non_zero_pct = 100.0 * static_cast<double>(non_zero) / static_cast<double>(npixels);
-    printf("%s: min=%u max=%u zero=%llu (%.2f%%) non_zero=%llu (%.2f%%)\n",
-           label,
-           static_cast<unsigned>(min_v),
-           static_cast<unsigned>(max_v),
-           static_cast<unsigned long long>(zero),
-           zero_pct,
-           static_cast<unsigned long long>(non_zero),
-           non_zero_pct);
-}
-
-bool build_star_descriptors(const star_detail *stars,
-                            u_int32_t count,
-                            long width,
-                            long height,
-                            std::vector<cv::KeyPoint> &keypoints,
-                            cv::Mat &descriptors) {
-    keypoints.clear();
-    descriptors.release();
-
-    if (count < 3) {
-        return false;
-    }
-
-    const float image_diag = std::sqrt(static_cast<float>(width * width + height * height));
-    if (image_diag <= 0.0f) {
-        return false;
-    }
-
-    std::vector<std::array<float, 3>> rows;
-    rows.reserve(count);
-
-    for (u_int32_t i = 0; i < count; i++) {
-        const float xi = static_cast<float>(stars[i].x);
-        const float yi = static_cast<float>(stars[i].y);
-
-        float best_d2_1 = std::numeric_limits<float>::max();
-        float best_d2_2 = std::numeric_limits<float>::max();
-        int idx1 = -1;
-        int idx2 = -1;
-
-        for (u_int32_t j = 0; j < count; j++) {
-            if (j == i) {
-                continue;
-            }
-
-            const float dx = static_cast<float>(stars[j].x) - xi;
-            const float dy = static_cast<float>(stars[j].y) - yi;
-            const float d2 = dx * dx + dy * dy;
-
-            if (d2 < best_d2_1) {
-                best_d2_2 = best_d2_1;
-                idx2 = idx1;
-                best_d2_1 = d2;
-                idx1 = static_cast<int>(j);
-            } else if (d2 < best_d2_2) {
-                best_d2_2 = d2;
-                idx2 = static_cast<int>(j);
-            }
-        }
-
-        if (idx1 < 0 || idx2 < 0) {
-            continue;
-        }
-
-        const float x1 = static_cast<float>(stars[idx1].x);
-        const float y1 = static_cast<float>(stars[idx1].y);
-        const float x2 = static_cast<float>(stars[idx2].x);
-        const float y2 = static_cast<float>(stars[idx2].y);
-
-        const float v1x = x1 - xi;
-        const float v1y = y1 - yi;
-        const float v2x = x2 - xi;
-        const float v2y = y2 - yi;
-
-        const float d1 = std::sqrt(v1x * v1x + v1y * v1y);
-        const float d2 = std::sqrt(v2x * v2x + v2y * v2y);
-        if (d1 <= 1e-6f || d2 <= 1e-6f) {
-            continue;
-        }
-
-        float cos_angle = (v1x * v2x + v1y * v2y) / (d1 * d2);
-        cos_angle = clamp(cos_angle, -1.0f, 1.0f);
-        const float angle_norm = std::acos(cos_angle) / static_cast<float>(CV_PI);
-
-        rows.push_back({d1 / image_diag, d2 / image_diag, angle_norm});
-        keypoints.emplace_back(cv::Point2f(xi, yi), 5.0f);
-    }
-
-    if (rows.size() < 4) {
-        keypoints.clear();
-        return false;
-    }
-
-    descriptors = cv::Mat(static_cast<int>(rows.size()), 3, CV_32F);
-    for (int r = 0; r < descriptors.rows; r++) {
-        descriptors.at<float>(r, 0) = rows[r][0];
-        descriptors.at<float>(r, 1) = rows[r][1];
-        descriptors.at<float>(r, 2) = rows[r][2];
-    }
-
-    return true;
-}
-
-bool build_star_descriptors_generalized(const star_detail *stars,
-                                        u_int32_t count,
-                                        long width,
-                                        long height,
-                                        int neighbors,
-                                        std::vector<cv::KeyPoint> &keypoints,
-                                        cv::Mat &descriptors) {
-    keypoints.clear();
-    descriptors.release();
-
-    if (neighbors < 2) {
-        return false;
-    }
-
-    if (count < static_cast<u_int32_t>(neighbors + 1)) {
-        return false;
-    }
-
-    const float image_diag = std::sqrt(static_cast<float>(width * width + height * height));
-    if (image_diag <= 0.0f) {
-        return false;
-    }
-
-    const int descriptor_dim = 2 * neighbors - 1;
-    std::vector<float> all_rows;
-    all_rows.reserve(static_cast<size_t>(count) * static_cast<size_t>(descriptor_dim));
-
-    for (u_int32_t i = 0; i < count; i++) {
-        const float xi = static_cast<float>(stars[i].x);
-        const float yi = static_cast<float>(stars[i].y);
-
-        std::vector<std::pair<float, int>> d2_with_idx;
-        d2_with_idx.reserve(count > 0 ? count - 1 : 0);
-
-        for (u_int32_t j = 0; j < count; j++) {
-            if (j == i) {
-                continue;
-            }
-
-            const float dx = static_cast<float>(stars[j].x) - xi;
-            const float dy = static_cast<float>(stars[j].y) - yi;
-            const float d2 = dx * dx + dy * dy;
-            d2_with_idx.emplace_back(d2, static_cast<int>(j));
-        }
-
-        if (static_cast<int>(d2_with_idx.size()) < neighbors) {
-            continue;
-        }
-
-        std::partial_sort(
-            d2_with_idx.begin(),
-            d2_with_idx.begin() + neighbors,
-            d2_with_idx.end(),
-            [](const std::pair<float, int> &a, const std::pair<float, int> &b) {
-                return a.first < b.first;
-            }
-        );
-
-        std::vector<cv::Point2f> vectors;
-        vectors.reserve(neighbors);
-
-        bool valid = true;
-        for (int k = 0; k < neighbors; k++) {
-            const int idx = d2_with_idx[k].second;
-            const float xk = static_cast<float>(stars[idx].x);
-            const float yk = static_cast<float>(stars[idx].y);
-
-            const float vx = xk - xi;
-            const float vy = yk - yi;
-            const float dist = std::sqrt(vx * vx + vy * vy);
-            if (dist <= 1e-6f) {
-                valid = false;
-                break;
-            }
-
-            all_rows.push_back(dist / image_diag);
-            vectors.emplace_back(vx, vy);
-        }
-
-        if (!valid) {
-            for (int rollback = 0; rollback < static_cast<int>(vectors.size()); rollback++) {
-                all_rows.pop_back();
-            }
-            continue;
-        }
-
-        for (int k = 0; k < neighbors - 1; k++) {
-            const cv::Point2f &v1 = vectors[k];
-            const cv::Point2f &v2 = vectors[k + 1];
-            const float d1 = std::sqrt(v1.x * v1.x + v1.y * v1.y);
-            const float d2 = std::sqrt(v2.x * v2.x + v2.y * v2.y);
-            float cos_angle = (v1.x * v2.x + v1.y * v2.y) / (d1 * d2);
-            cos_angle = clamp(cos_angle, -1.0f, 1.0f);
-            const float angle_norm = std::acos(cos_angle) / static_cast<float>(CV_PI);
-            all_rows.push_back(angle_norm);
-        }
-
-        keypoints.emplace_back(cv::Point2f(xi, yi), 5.0f);
-    }
-
-    if (keypoints.size() < 4) {
-        keypoints.clear();
-        return false;
-    }
-
-    descriptors = cv::Mat(static_cast<int>(keypoints.size()), descriptor_dim, CV_32F);
-    const int rows = descriptors.rows;
-    for (int r = 0; r < rows; r++) {
-        for (int c = 0; c < descriptor_dim; c++) {
-            descriptors.at<float>(r, c) = all_rows[static_cast<size_t>(r) * static_cast<size_t>(descriptor_dim) + static_cast<size_t>(c)];
-        }
-    }
-
-    return true;
-}
-
-// Apply affine transform to planar RGB data (separate R, G, B planes)
-// Avoids merge/split overhead by processing each plane independently
+// ---------------------------------------------------------------------------
+// Unified wrapper – picks the GPU path by default.
+// ---------------------------------------------------------------------------
 void warp_affine_planar(const u_int16_t *source, u_int16_t *dest,
-                        const cv::Mat &affine_2x3, long width, long height,
-                        int interpolation = cv::INTER_LINEAR,
-                        int border_mode = cv::BORDER_CONSTANT,
-                        u_int16_t border_value = 0) {
-    // Create cv::Mat headers for each plane (no data copy)
-    long npixels = width * height;
-    cv::Mat source_r(height, width, CV_16UC1, const_cast<u_int16_t*>(source));
-    cv::Mat source_g(height, width, CV_16UC1, const_cast<u_int16_t*>(source + npixels));
-    cv::Mat source_b(height, width, CV_16UC1, const_cast<u_int16_t*>(source + 2*npixels));
-    
-    cv::Mat dest_r(height, width, CV_16UC1, dest);
-    cv::Mat dest_g(height, width, CV_16UC1, dest + npixels);
-    cv::Mat dest_b(height, width, CV_16UC1, dest + 2*npixels);
-    
-    // Apply same affine transform to each plane
-    cv::warpAffine(source_r, dest_r, affine_2x3, cv::Size(width, height), interpolation, border_mode, cv::Scalar(border_value));
-    cv::warpAffine(source_g, dest_g, affine_2x3, cv::Size(width, height), interpolation, border_mode, cv::Scalar(border_value));
-    cv::warpAffine(source_b, dest_b, affine_2x3, cv::Size(width, height), interpolation, border_mode, cv::Scalar(border_value));
+                        const cv::Mat &affine_2x3, long width, long height) {
+    warp_affine_planar_gpu(source, dest, affine_2x3, width, height);
 }
 
 cv::Mat draw_star_boxes(const cv::Mat &base_gray, const star *stars, u_int32_t count) {
@@ -383,11 +111,7 @@ int main(int argc, char **argv) {
     char *end;
 
     threshold_params t_par;
-        t_par.type = OTSU_CENTRALIZED;
-        t_par.threshold = 1500;
         t_par.window_size = 201;
-        t_par.reduce_factor = 8;
-        t_par.threshold_scale = 0.8f;
 
     u_int16_t max_star_size = 100;
     u_int16_t min_star_size = 10;
@@ -510,11 +234,6 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (channels1 == 1 && !threshold_algo_set && t_par.type == TR_SIMPLE) {
-        t_par.type = TR_ADAPTIVE;
-        printf("Mono input detected: switching default threshold mode from simple to adaptive.\n");
-    }
-
     const long width = width1;
     const long height = height1;
     const long channels = channels1;
@@ -575,8 +294,6 @@ int main(int argc, char **argv) {
     compute_threshold_gpu(gray_image2, threshold_image2, width, height, t_par);
     t_elapsed = cpuSecond() - t_start;
     printf("Threshold done - time: %f\n", t_elapsed);
-    print_u8_threshold_stats("Threshold1 stats", threshold_image1, npixels);
-    print_u8_threshold_stats("Threshold2 stats", threshold_image2, npixels);
 
     star *d_stars1 = nullptr;
     star *d_stars2 = nullptr;
@@ -651,76 +368,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    cv::BFMatcher matcher(cv::NORM_L2, false);
-    const float ratio_thresh = 0.7f;
-
-    std::vector<std::vector<cv::DMatch>> knn_12;
-    std::vector<std::vector<cv::DMatch>> knn_21;
-    matcher.knnMatch(descriptors1, descriptors2, knn_12, 2);
-    matcher.knnMatch(descriptors2, descriptors1, knn_21, 2);
-
-    std::vector<cv::DMatch> forward_ratio_matches;
-    for (const auto &m : knn_12) {
-        if (m.size() >= 2 && m[0].distance < ratio_thresh * m[1].distance) {
-            forward_ratio_matches.push_back(m[0]);
-        }
-    }
-
-    std::vector<int> reverse_best_query(descriptors2.rows, -1);
-    for (const auto &m : knn_21) {
-        if (m.size() >= 2 && m[0].distance < ratio_thresh * m[1].distance) {
-            // reverse match: queryIdx is in image2 descriptor set, trainIdx is in image1 descriptor set
-            reverse_best_query[m[0].queryIdx] = m[0].trainIdx;
-        }
-    }
-
-    std::vector<cv::DMatch> mutual_matches;
-    mutual_matches.reserve(forward_ratio_matches.size());
-    for (const auto &m : forward_ratio_matches) {
-        if (m.trainIdx >= 0 && m.trainIdx < static_cast<int>(reverse_best_query.size())
-            && reverse_best_query[m.trainIdx] == m.queryIdx) {
-            mutual_matches.push_back(m);
-        }
-    }
-
     std::vector<cv::DMatch> inlier_matches;
     cv::Mat affine_2x3;
-    if (mutual_matches.size() >= 3) {
-        std::vector<cv::Point2f> points1, points2;
-        points1.reserve(mutual_matches.size());
-        points2.reserve(mutual_matches.size());
-
-        for (const auto &m : mutual_matches) {
-            points1.push_back(keypoints1[m.queryIdx].pt);
-            points2.push_back(keypoints2[m.trainIdx].pt);
-        }
-
-        cv::Mat inlier_mask;
-        affine_2x3 = cv::estimateAffinePartial2D(
-            points2,
-            points1,
-            inlier_mask,
-            cv::RANSAC,
-            3.0,
-            2000,
-            0.99,
-            10
-        );
-
-        if (!affine_2x3.empty() && !inlier_mask.empty()) {
-            inlier_matches.reserve(mutual_matches.size());
-            for (int i = 0; i < inlier_mask.rows; i++) {
-                if (inlier_mask.at<uchar>(i, 0)) {
-                    inlier_matches.push_back(mutual_matches[static_cast<size_t>(i)]);
-                }
-            }
-        }
-    }
-
-    printf("Built %d descriptors for image1 and %d for image2\n", descriptors1.rows, descriptors2.rows);
-    printf("Forward ratio matches: %zu\n", forward_ratio_matches.size());
-    printf("Mutual symmetric matches: %zu\n", mutual_matches.size());
-    printf("RANSAC affine inlier matches: %zu\n", inlier_matches.size());
+    float ratio_threshold = 0.7F; 
+    affine_2x3 = estimate_affine_partial_stars(keypoints1, descriptors1, keypoints2, descriptors2, ratio_threshold, &inlier_matches);
 
     cv::Mat match_img;
     cv::drawMatches(
@@ -747,14 +398,59 @@ int main(int argc, char **argv) {
     }
 
     if (!affine_2x3.empty() && inlier_matches.size() >= 3) {
-            // Allocate output buffers for aligned RGB planar data
-            u_int16_t *aligned = nullptr;
-            CHECK(cudaMallocManaged(&aligned, npixels * sizeof(u_int16_t) * 3));
-            
-            warp_affine_planar(rgb_data2, aligned, affine_2x3, width, height);
-            
-            save_image_fits(out_dir, "aligned_image2", aligned, width, height, 3);
-            CHECK(cudaFree(aligned));
+
+        // ---------- CPU reference ----------
+        u_int16_t *aligned_cpu = nullptr;
+        CHECK(cudaMallocManaged(&aligned_cpu, npixels * sizeof(u_int16_t) * 3));
+
+        double t_cpu = cpuSecond();
+        warp_affine_planar_cpu(rgb_data2, aligned_cpu, affine_2x3, width, height);
+        t_cpu = cpuSecond() - t_cpu;
+
+        // ---------- GPU ----------
+        u_int16_t *aligned_gpu = nullptr;
+        CHECK(cudaMallocManaged(&aligned_gpu, npixels * sizeof(u_int16_t) * 3));
+        // Prefetch GPU destination buffer to device to avoid first-touch page faults
+        CHECK(cudaMemPrefetchAsync(aligned_gpu, npixels * sizeof(u_int16_t) * 3, devLoc, 0));
+
+        double t_gpu = cpuSecond();
+        warp_affine_planar_gpu(rgb_data2, aligned_gpu, affine_2x3, width, height);
+        t_gpu = cpuSecond() - t_gpu;
+
+        // ---------- Pixel-difference statistics ----------
+        u_int64_t diff_pixels = 0;
+        u_int64_t diff_sum    = 0;
+        u_int16_t diff_max    = 0;
+        for (u_int64_t i = 0; i < npixels * 3; i++) {
+            u_int16_t cpu_v = aligned_cpu[i];
+            u_int16_t gpu_v = aligned_gpu[i];
+            if (cpu_v != gpu_v) {
+                diff_pixels++;
+                u_int16_t d = (cpu_v > gpu_v) ? (u_int16_t)(cpu_v - gpu_v) : (u_int16_t)(gpu_v - cpu_v);
+                diff_sum += d;
+                if (d > diff_max) diff_max = d;
+            }
+        }
+        double diff_pct = 100.0 * (double)diff_pixels / (double)(npixels * 3);
+
+        printf("\nTiming:\n");
+        printf("  CPU warpAffine:  %.3f ms\n", t_cpu * 1000.0);
+        printf("  GPU warp kernel: %.3f ms\n", t_gpu * 1000.0);
+        printf("  Speedup:         %.2fx\n", t_cpu / t_gpu);
+
+        printf("\nCPU vs GPU difference:\n");
+        printf("  Different pixels: %llu (%.4f%%)\n", (unsigned long long)diff_pixels, diff_pct);
+        printf("  Max difference:   %u\n", (unsigned)diff_max);
+        if (diff_pixels > 0) {
+            printf("  Mean difference:  %.2f\n", (double)diff_sum / (double)diff_pixels);
+        }
+
+        // Save both outputs for visual inspection
+        save_image_fits(out_dir, "aligned_image2_cpu", aligned_cpu, width, height, 3);
+        save_image_fits(out_dir, "aligned_image2_gpu", aligned_gpu, width, height, 3);
+
+        CHECK(cudaFree(aligned_cpu));
+        CHECK(cudaFree(aligned_gpu));
     } else {
         fprintf(stderr, "Not enough inlier matches to compute affine transform (need at least 3).\n");
     }

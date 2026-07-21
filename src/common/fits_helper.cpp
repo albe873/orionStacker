@@ -4,6 +4,9 @@
 #include <time.h>
 #include <string>
 #include <dirent.h>
+#include <algorithm>
+#include <vector>
+#include <utility>
 #include "include/common.h"
 #include "opencv2/imgcodecs.hpp"
 
@@ -51,6 +54,73 @@ void get_fits_dimensions(fitsfile *fptr, long *width, long *height, long *n_chan
     else {
         *n_chan = 1;
     }
+}
+
+
+double get_fits_date_avg(fitsfile *fptr) {
+    int status = 0;
+    char date_str[128];
+    // Prima prova DATE-AVG, poi DATE-OBS come fallback
+    if (fits_read_key(fptr, TSTRING, "DATE-AVG", date_str, NULL, &status)) {
+        status = 0; // reset status
+        if (fits_read_key(fptr, TSTRING, "DATE-OBS", date_str, NULL, &status)) {
+            // Nessun campo data trovato
+            return 0.0;
+        }
+    }
+
+    // Il formato tipico è: "2024-08-11T00:20:54.000" oppure "2024-08-11T00:20:54"
+    struct tm tm_val;
+    memset(&tm_val, 0, sizeof(tm_val));
+
+    double frac_sec = 0.0;
+    // Prova a parsare con frazione di secondo
+    int matched = sscanf(date_str, "%d-%d-%dT%d:%d:%lf",
+                         &tm_val.tm_year, &tm_val.tm_mon, &tm_val.tm_mday,
+                         &tm_val.tm_hour, &tm_val.tm_min, &frac_sec);
+    if (matched < 5) {
+        // Prova formato con data e ora separati da spazio
+        matched = sscanf(date_str, "%d-%d-%d %d:%d:%lf",
+                         &tm_val.tm_year, &tm_val.tm_mon, &tm_val.tm_mday,
+                         &tm_val.tm_hour, &tm_val.tm_min, &frac_sec);
+    }
+    if (matched < 5) {
+        fprintf(stderr, "get_fits_date_avg: cannot parse date string '%s'\n", date_str);
+        return 0.0;
+    }
+
+    tm_val.tm_year -= 1900;  // tm_year è years since 1900
+    tm_val.tm_mon  -= 1;     // tm_mon è 0-based
+    tm_val.tm_sec   = (int)frac_sec;
+    tm_val.tm_isdst = -1;    // lascia che il sistema decida DST
+
+    time_t t = timegm(&tm_val);  // UTC, non locale
+    if (t == (time_t)-1) {
+        fprintf(stderr, "get_fits_date_avg: timegm failed for '%s'\n", date_str);
+        return 0.0;
+    }
+
+    return (double)t + (frac_sec - (int)frac_sec);
+}
+
+
+int find_mid_image_index(const double *timestamps, int count) {
+    if (count <= 0) return -1;
+    if (count == 1) return 0;
+
+    // Crea coppie (timestamp, indice_originale) e ordina per timestamp
+    std::vector<std::pair<double, int>> indexed;
+    indexed.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        indexed.emplace_back(timestamps[i], i);
+    }
+
+    // Ordina per timestamp crescente
+    std::sort(indexed.begin(), indexed.end(),
+              [](const auto &a, const auto &b) { return a.first < b.first; });
+
+    // Restituisce l'indice originale dell'elemento mediano
+    return indexed[count / 2].second;
 }
 
 
@@ -284,7 +354,7 @@ int check_directory(const char *dir_path, int *count, long *width, long *height,
 }
 
 // Rileggi le immagini e copia in memoria chiamando funzione esterna
-int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count) {
+int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count, double *timestamps) {
     DIR *dir = opendir(dir_path);
     if (!dir) {
         perror("opendir");
@@ -308,8 +378,14 @@ int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long width, 
         open_fits(path, &fptr);
 
         get_fits_dimensions(fptr, &w,&h,&n);
-        if (w != width || h != height || n != n_chan)
+        if (w != width || h != height || n != n_chan) {
+            fits_close_file(fptr, &status);
             continue;
+        }
+
+        if (timestamps != nullptr) {
+            timestamps[idx] = get_fits_date_avg(fptr);
+        }
 
         get_fits_data(fptr, data_size, img_all + idx*data_size);
         fits_close_file(fptr,&status);
@@ -320,4 +396,54 @@ int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long width, 
         printf("  Warning! Number of expected images: %d, Actually loaded: %d", count, idx);
     closedir(dir);
     return 0;
+}
+
+
+bool find_latest_master_file(const string &dir_path, const string &master_type, string &file_path) {
+    string prefix = "master_" + master_type + "_";
+    DIR *dir = opendir(dir_path.c_str());
+    if (!dir) {
+        return false;
+    }
+
+    struct dirent *entry;
+    string latest_file;
+    string latest_ts;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type != DT_REG)
+            continue;
+        string name(entry->d_name);
+        // Must start with the prefix and end with .fits
+        if (name.rfind(prefix, 0) != 0)
+            continue;
+        if (name.size() < 4)
+            continue;
+        // Check .fits extension
+        string lower_name = name;
+        transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+        if (lower_name.substr(lower_name.size() - 5) != ".fits")
+            continue;
+        // Extract the timestamp: after prefix we expect "YYYYMMDD_HHMMSS.fits"
+        string rest = name.substr(prefix.size());
+        if (rest.size() < 20) continue;  // "YYYYMMDD_HHMMSS.fits" = 20 chars
+        string ts = rest.substr(0, 15);   // "YYYYMMDD_HHMMSS" = 15 chars
+        if (ts > latest_ts) {
+            latest_ts = ts;
+            latest_file = entry->d_name;
+        }
+    }
+    closedir(dir);
+
+    if (latest_file.empty()) {
+        return false;
+    }
+
+    file_path = dir_path;
+    if (file_path.back() != '/')
+        file_path += "/";
+    file_path += latest_file;
+
+    printf("Found existing master %s: %s\n", master_type.c_str(), file_path.c_str());
+    return true;
 }

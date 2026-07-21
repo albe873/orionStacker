@@ -20,11 +20,7 @@ int main(int argc, char **argv) {
     long num;
     char *end;
     threshold_params t_par;
-        t_par.type = OTSU_CENTRALIZED;
-        t_par.threshold = 1500;
         t_par.window_size = 201;
-        t_par.reduce_factor = 8;
-        t_par.threshold_scale = 0.7f;
 
     u_int16_t max_star_size = 100;
     u_int16_t min_star_size = 4;

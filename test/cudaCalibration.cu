@@ -26,6 +26,7 @@ int main(int argc, char **argv) {
 
     int opt, option_index = 0;
     static struct option long_options[] = {
+        {"base-dir", required_argument, 0, 'B'},
         {"bias",  required_argument, 0, 'b'},
         {"dark",  required_argument, 0, 'd'},
         {"flat",  required_argument, 0, 'f'},
@@ -36,10 +37,20 @@ int main(int argc, char **argv) {
 
     while ((opt = getopt_long(argc, argv, "b:d:f:l:o:", long_options, &option_index)) != -1) {
         switch (opt) {
-            case 'b': bias_dir = optarg; break;
-            case 'd': dark_dir = optarg; break;
-            case 'f': flat_dir = optarg; break;
-            case 'l': in_dir = optarg; break;
+            case 'B': {
+                // If base directory is provided, append subdirectories for bias, dark, flat, and light
+                remove_trailing_slash(optarg);
+                std::string base_dir = optarg;
+                bias_dir = (base_dir + "/bias").c_str();
+                dark_dir = (base_dir + "/dark").c_str();
+                flat_dir = (base_dir + "/flat").c_str();
+                in_dir = (base_dir + "/light").c_str();
+                break;
+            }
+            case 'b': bias_dir = optarg; remove_trailing_slash((char *)bias_dir); break;
+            case 'd': dark_dir = optarg; remove_trailing_slash((char *)dark_dir); break;
+            case 'f': flat_dir = optarg; remove_trailing_slash((char *)flat_dir); break;
+            case 'l': in_dir = optarg; remove_trailing_slash((char *)in_dir); break;
             case 'o': out_dir = optarg; break;
             default:
                 fprintf(stderr, "Usage: %s --light <input/dir> --bias <bias/dir> --dark <dark/dir> --flat <flat/dir> [--output <output/dir>]\n", argv[0]);
@@ -51,11 +62,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Light, bias, dark and flat directories are required.\n");
         return 1;
     }
-
-    remove_trailing_slash((char *)in_dir);
-    remove_trailing_slash((char *)bias_dir);
-    remove_trailing_slash((char *)dark_dir);
-    remove_trailing_slash((char *)flat_dir);
 
     // Inizializza CUDA
     int dev = 0;

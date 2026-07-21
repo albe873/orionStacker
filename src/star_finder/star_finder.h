@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "opencv2/core.hpp"
+#include "opencv2/features2d.hpp"
+
 struct star {
     uint64_t start_x;
     uint64_t start_y;
@@ -37,11 +40,11 @@ enum threshold_type {
 };
 
 struct threshold_params {
-    threshold_type type;
+    threshold_type type = OTSU_CENTRALIZED;
     u_int16_t threshold;
-    u_int16_t window_size;
+    u_int16_t window_size = 101;
     u_int16_t reduce_factor;
-    float threshold_scale;
+    float threshold_scale = 0.7f;
 };
 
 // GPU
@@ -120,9 +123,67 @@ void populate_star_details(
 
 void draw_stars(
     u_int16_t* img,
-    u_int64_t width,
+    u_int64_t  width,
     const star *stars,
-    u_int32_t n_stars
+    u_int32_t  n_stars
 );
+
+
+// CPU only
+
+bool build_star_descriptors(
+    const star_detail *stars,
+    u_int32_t count,
+    long width,
+    long height,
+    std::vector<cv::KeyPoint> &keypoints,
+    cv::Mat &descriptors
+);
+
+bool build_star_descriptors_generalized(
+    const star_detail *stars,
+    u_int32_t count,
+    long width,
+    long height,
+    int neighbors,
+    std::vector<cv::KeyPoint> &keypoints,
+    cv::Mat &descriptors
+);
+
+
+// Warping
+
+/* estimate the trasformation between two images
+ * first it find the good matches between the two keypoints vectors
+ * then uses the function cv::estimateAffinePartial2D
+*/
+cv::Mat estimate_affine_partial_stars(
+    const std::vector<cv::KeyPoint> &keypoints1,
+    const cv::Mat                   &descriptors1, 
+    const std::vector<cv::KeyPoint> &keypoints2,
+    const cv::Mat                   &descriptors2,
+    float                           ratio_threshold = 0.7F,
+    std::vector<cv::DMatch>*        inlier_matches = nullptr
+);
+
+
+void warp_affine_planar_cpu(
+    const u_int16_t *source,
+    u_int16_t       *dest,
+    const cv::Mat   &affine_2x3,
+    long            width, 
+    long            height
+);
+
+void warp_affine_planar_gpu(
+    const u_int16_t *source,
+    u_int16_t       *dest,
+    const cv::Mat   &affine_2x3,
+    long            width,
+    long            height
+);
+
+
+
 
 #endif // STAR_FINDER_H

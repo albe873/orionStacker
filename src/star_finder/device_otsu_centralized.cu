@@ -5,7 +5,7 @@
 #include "common.h"
 
 // Constants
-#define OTSU_HISTOGRAM_SIZE  1024
+#define OTSU_HISTOGRAM_SIZE  4096
 #define OTSU_THREADS_PER_BLOCK 256
 #define OTSU_NUM_BLOCKS 32
 

@@ -163,7 +163,7 @@ inline void write_star(star *stars, u_int32_t &num_stars, u_int32_t max_stars,
 void detect_stars(const uint8_t* __restrict__ input, uint64_t width, uint64_t height, 
                   uint16_t max_star_size, uint16_t min_star_size,
                   star *stars, uint32_t &num_stars, uint32_t max_stars) {
-    
+    num_stars = 0;
     const int8_t directions[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};  // variazione x e y per ogni direzione
 
     #pragma omp parallel for

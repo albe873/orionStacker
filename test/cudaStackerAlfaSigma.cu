@@ -153,15 +153,14 @@ int main(int argc, char **argv) {
     }
 
     u_int16_t *mean_cpu = (u_int16_t *)malloc((size_t)npixels * sizeof(u_int16_t));
-    float    *std_cpu  = (float    *)malloc((size_t)npixels * sizeof(float));
-    if (!mean_cpu || !std_cpu) {
+    if (!mean_cpu) {
         fprintf(stderr, "Failed to allocate CPU result memory\n");
-        free(img_all_cpu); free(mean_cpu); free(std_cpu);
+        free(img_all_cpu); free(mean_cpu);
         return 1;
     }
 
     t_start = cpuSecond();
-    alfa_sigma_cpu(img_all_cpu, mean_cpu, std_cpu, image_count, (int)npixels, kappa, sigma);
+    alfa_sigma_cpu(img_all_cpu, mean_cpu, image_count, (int)npixels, kappa, sigma);
     double time_cpu = cpuSecond() - t_start;
     printf("  CPU Alfa Sigma elapsed time: %f s\n", time_cpu);
 
@@ -205,7 +204,6 @@ int main(int argc, char **argv) {
     CHECK(cudaFree(mean_gpu));
     free(img_all_cpu);
     free(mean_cpu);
-    free(std_cpu);
 
     CHECK(cudaDeviceReset());
     return 0;

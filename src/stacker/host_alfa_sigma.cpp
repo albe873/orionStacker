@@ -1,11 +1,9 @@
-#ifndef HOST_ALFA_SIGMA_H
-#define HOST_ALFA_SIGMA_H
-
 #include <stdio.h>
 #include <fitsio.h>
 #include <dirent.h>
 #include <string.h>
 #include <math.h>
+//             //if ((i == X || i == X + npixels/3 || i == X + npixels/3*2) && d*d>s2) printf("Debug | %d | img: %d, removed pixel\n", i, j);
 
 void mean_cpu(u_int16_t* __restrict__ img_all, u_int16_t* __restrict__ mean, int numImages, int npixels) {
     #pragma omp parallel for
@@ -64,18 +62,17 @@ void filter_pixels_cpu(u_int16_t* __restrict__ mean, float* __restrict__ std, u_
 void alfa_sigma_cpu(
     u_int16_t* __restrict__ img_all,
     u_int16_t* __restrict__ mean,
-    float* __restrict__ std,
     int numImages,
     int npixels,
     float kappa,
     int sigma
 ) {
+    float* __restrict__ std = (float*)malloc(npixels*sizeof(float));
     for (int i = 0; i < sigma; i++) {
         mean_cpu(img_all, mean, numImages, npixels);
         std_dev_cpu(std, mean, img_all, numImages, npixels);
         filter_pixels_cpu(mean, std, img_all, kappa, numImages, npixels);
     }
     mean_cpu(img_all, mean, numImages, npixels);
+    free(std);
 }
-
-#endif // HOST_ALFA_SIGMA_H

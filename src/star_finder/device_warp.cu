@@ -5,9 +5,9 @@
 // GPU-only affine warp for planar u16 RGB data (R, G, B stored as contiguous
 // planes: [R: npixels | G: npixels | B: npixels]).
 //
-// Bilinear interpolation with per-tap constant-zero border: each of the four
-// sampling taps that falls outside the source image contributes 0 while the
-// valid taps keep their weights.  This matches the semantics of
+// Bilinear interpolation with constant-zero border: each of the four sampling
+// taps that falls outside the source image contributes 0 while the valid taps
+// keep their weights.  This matches the semantics of
 //   cv::warpAffine(..., cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0))
 // Works on CUDA managed memory without ever migrating to the CPU.
 // ---------------------------------------------------------------------------
@@ -34,20 +34,28 @@ __device__ inline u_int16_t bilinear_interior(
     return (u_int16_t)min(max(__float2int_rn(v), 0), 65535);
 }
 
-// Border path: guard every tap individually (BORDER_CONSTANT(0) semantics).
+// Border path: per-tap constant-zero border (BORDER_CONSTANT(0) semantics).
+// Each of the four bilinear taps is independently clamped to the image; OOB
+// taps contribute 0 while valid taps keep their weights. This matches the
+// semantics of cv::warpAffine(..., cv::INTER_LINEAR, cv::BORDER_CONSTANT, 0)
+// and produces a smooth, symmetric fade-to-zero at edges instead of a sharp
+// 1-pixel dark band on the right/bottom in memory coordinates.
 __device__ inline u_int16_t bilinear_border(
     const u_int16_t *__restrict__ plane,
     int sx, int sy, float fx, float fy, int width, int height)
 {
-    const bool x0_ok = (sx     >= 0) && (sx     < width);
-    const bool x1_ok = (sx + 1 >= 0) && (sx + 1 < width);
-    const bool y0_ok = (sy     >= 0) && (sy     < height);
-    const bool y1_ok = (sy + 1 >= 0) && (sy + 1 < height);
-
-    const float v00 = (x0_ok && y0_ok) ? (float)plane[sy * width + sx]           : 0.0f;
-    const float v10 = (x1_ok && y0_ok) ? (float)plane[sy * width + sx + 1]       : 0.0f;
-    const float v01 = (x0_ok && y1_ok) ? (float)plane[(sy + 1) * width + sx]     : 0.0f;
-    const float v11 = (x1_ok && y1_ok) ? (float)plane[(sy + 1) * width + sx + 1] : 0.0f;
+    // Clamp each of the 4 bilinear taps individually.
+    // Out-of-bounds taps become 0 (BORDER_CONSTANT), in-bounds taps use the
+    // actual pixel value. The weighted sum then naturally fades toward 0
+    // as more taps fall outside, instead of abruptly becoming 0.
+    const float v00 = (sx >= 0 && sx < width && sy >= 0 && sy < height)
+                      ? (float)plane[sy * width + sx] : 0.0f;
+    const float v10 = (sx + 1 >= 0 && sx + 1 < width && sy >= 0 && sy < height)
+                      ? (float)plane[sy * width + (sx + 1)] : 0.0f;
+    const float v01 = (sx >= 0 && sx < width && sy + 1 >= 0 && sy + 1 < height)
+                      ? (float)plane[(sy + 1) * width + sx] : 0.0f;
+    const float v11 = (sx + 1 >= 0 && sx + 1 < width && sy + 1 >= 0 && sy + 1 < height)
+                      ? (float)plane[(sy + 1) * width + (sx + 1)] : 0.0f;
 
     const float v0 = fmaf(fx, v10 - v00, v00);
     const float v1 = fmaf(fx, v11 - v01, v01);
@@ -128,6 +136,7 @@ __global__ void warp_affine_planar_kernel_opt(
         const int tile_sy_max = tile_sy_min + TILE_H_LOAD;
 
         // Cooperative load of source tile into shared memory
+        // Out-of-bounds positions are set to 0 (BORDER_CONSTANT(0) semantics).
         for (int load_y = threadIdx.y; load_y < TILE_H_LOAD; load_y += blockDim.y) {
             const int src_y = tile_sy_min + load_y;
             for (int load_x = threadIdx.x; load_x < TILE_W_LOAD; load_x += blockDim.x) {
@@ -150,8 +159,9 @@ __global__ void warp_affine_planar_kernel_opt(
             const int smem_sy0 = sy0 - tile_sy_min;
 
             if (smem_sx0 >= 0 && smem_sx0 < TILE_W_LOAD - 1 &&
-                smem_sy0 >= 0 && smem_sy0 < TILE_H_LOAD - 1) {
-                // Fast path: all 4 taps in shared memory
+                smem_sy0 >= 0 && smem_sy0 < TILE_H_LOAD - 1 &&
+                sx0 >= 0 && sx0 < width - 1 && sy0 >= 0 && sy0 < height - 1) {
+                // Fast path: all 4 taps in shared memory and all valid source pixels
                 const int idx00 = smem_sy0 * TILE_W_LOAD + smem_sx0;
                 const float v00 = (float)smem_plane[idx00];
                 const float v10 = (float)smem_plane[idx00 + 1];
@@ -173,7 +183,8 @@ __global__ void warp_affine_planar_kernel_opt(
             const int smem_sy1 = sy1 - tile_sy_min;
 
             if (smem_sx1 >= 0 && smem_sx1 < TILE_W_LOAD - 1 &&
-                smem_sy1 >= 0 && smem_sy1 < TILE_H_LOAD - 1) {
+                smem_sy1 >= 0 && smem_sy1 < TILE_H_LOAD - 1 &&
+                sx1 >= 0 && sx1 < width - 1 && sy1 >= 0 && sy1 < height - 1) {
                 const int idx00 = smem_sy1 * TILE_W_LOAD + smem_sx1;
                 const float v00 = (float)smem_plane[idx00];
                 const float v10 = (float)smem_plane[idx00 + 1];
@@ -291,6 +302,6 @@ void warp_affine_planar_gpu(const u_int16_t *source, u_int16_t *dest,
         inv_a, inv_b, inv_tx,
         inv_c, inv_d, inv_ty,
         (int)width, (int)height);
-
+    
     CHECK(cudaDeviceSynchronize());
 }

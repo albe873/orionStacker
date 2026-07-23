@@ -40,3 +40,7 @@ if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
     add_cuda_hip_executable(testAll testAll.cu)
     target_link_libraries(testAll common calibration debayer starFinder stacker cfitsio m)
 endif()
+
+# ===== testAll CPU =====
+add_executable(testAll_cpu testAll.cpp)
+target_link_libraries(testAll_cpu common calibration debayer starFinder stacker cfitsio m ${OpenCV_LIBS})

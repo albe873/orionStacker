@@ -65,6 +65,7 @@ void calibrateLights_cpu(const uint16_t* __restrict__ light_all, const float* __
 
     float sum = 0.0F;
     
+    #pragma omp parallel for reduction(+:sum)
     for (int64_t i = 0; i < npixels; i++)
         sum += master_flat[i];
     float master_flat_mean_val = sum / (float)npixels;

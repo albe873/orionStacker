@@ -1,8 +1,8 @@
-#include "fits_helper.h"
-#include "cuda_helper.h"
-#include "common.h"
+#include "cuda_helper.hh"
+#include "fits_helper.hh"
+#include "common.hh"
 
-#include "debayer.h"
+#include "debayer.hh"
 
 #include <stdio.h>
 #include <getopt.h>
@@ -55,14 +55,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    u_int64_t npixels = width*height;
+    uint64_t npixels = width*height;
 
     // Alloca memoria continua
-    u_int16_t *gray_all = nullptr;
-    u_int16_t *rgb_all  = nullptr;
-    CHECK(cudaMallocManaged(&gray_all, npixels*image_count*sizeof(u_int16_t)));
-    CHECK(cudaMallocManaged(&rgb_all,  npixels*3*image_count*sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(u_int16_t), devLoc, 0));
+    uint16_t *gray_all = nullptr;
+    uint16_t *rgb_all  = nullptr;
+    CHECK(cudaMallocManaged(&gray_all, npixels*image_count*sizeof(uint16_t)));
+    CHECK(cudaMallocManaged(&rgb_all,  npixels*3*image_count*sizeof(uint16_t)));
+    CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(uint16_t), devLoc, 0));
 
     // Rileggi le immagini e copia in memoria
     if (load_images_to_memory_prefetch(in_dir, gray_all, width, height, n_chan, image_count, dev) != 0) {
@@ -78,7 +78,7 @@ int main(int argc, char **argv) {
     printf("GPU\n");
 
     double t_start = cpuSecond();
-    demosaic_bilinear_rggb(gray_all, rgb_all, width, height, image_count);
+    demosaic_mhc_rggb_gpu(gray_all, rgb_all, width, height, image_count);
     double time_gpu = cpuSecond()-t_start;
     printf("  debayer done - time: %f s\n", time_gpu);
 
@@ -97,11 +97,11 @@ int main(int argc, char **argv) {
     printf("\n==========================\n");
     printf("CPU\n");
 
-    CHECK(cudaMemPrefetchAsync(gray_all, npixels*image_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(gray_all, npixels*image_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
     CHECK(cudaDeviceSynchronize());
     
     // alloca memoria per il risultato CPU
-    u_int16_t *rgb_cpu = (u_int16_t *)malloc(npixels*3*image_count*sizeof(u_int16_t));
+    uint16_t *rgb_cpu = (uint16_t *)malloc(npixels*3*image_count*sizeof(uint16_t));
     if (!rgb_cpu) {
         fprintf(stderr,"Failed to allocate CPU memory\n");
         exit(1);
@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
 
 
     t_start = cpuSecond();
-    demosaic_bilinear_rggb_cpu(gray_all, rgb_cpu, width, height, image_count);
+    demosaic_mhc_rggb_cpu(gray_all, rgb_cpu, width, height, image_count);
     double time_cpu = cpuSecond()-t_start;
     printf("  debayer done - time: %f s\n", time_cpu);
 
@@ -119,9 +119,9 @@ int main(int argc, char **argv) {
     printf("Comparing results\n");
     long errors = 0;
     for (int i = 0; i < image_count; i++) {
-        for (u_int64_t p = 0; p < npixels*3; p++) {
-            u_int16_t gpu_val = rgb_all[i*npixels*3 + p];
-            u_int16_t cpu_val = rgb_cpu[i*npixels*3 + p];
+        for (uint64_t p = 0; p < npixels*3; p++) {
+            auto gpu_val = rgb_all[i*npixels*3 + p];
+            auto cpu_val = rgb_cpu[i*npixels*3 + p];
             if (gpu_val != cpu_val) {
                 errors++;
             }

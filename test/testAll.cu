@@ -1,15 +1,13 @@
-#include "cuda_helper.h"
-#include "fits_helper.h"
-#include "common.h"
+#include "cuda_helper.hh"
+#include "fits_helper.hh"
+#include "common.hh"
 
-#include "calibration.h"
-#include "debayer.h"
-#include "star_finder.h"
-#include "stacker.h"
+#include "calibration.hh"
+#include "debayer.hh"
+#include "star_finder.hh"
+#include "stacker.hh"
 
 #include <getopt.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <string>
 #include <cstring>
@@ -78,7 +76,7 @@ int main(int argc, char** argv) {
     
     long bias_width=0, bias_height=0, bias_n_chan=0, npixels=0;
     int bias_count=0;
-    u_int16_t *master_bias = nullptr;
+    float *master_bias = nullptr;
 
     // First, check if there's already a master_bias in the output directory
     string master_bias_file;
@@ -92,7 +90,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         npixels = bias_width * bias_height;
-        CHECK(cudaMallocManaged(&master_bias, npixels * sizeof(u_int16_t)));
+        CHECK(cudaMallocManaged(&master_bias, npixels * sizeof(float)));
         get_fits_data(fpbias, npixels, master_bias);
     }
     // If no existing master, check if bias_path is a file (direct master bias)
@@ -105,7 +103,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         npixels = bias_width * bias_height;
-        CHECK(cudaMallocManaged(&master_bias, npixels * sizeof(u_int16_t)));
+        CHECK(cudaMallocManaged(&master_bias, npixels * sizeof(float)));
         get_fits_data(fpbias, npixels, master_bias);  // automatically close the fits file
     }
     // Otherwise, compute from bias directory
@@ -118,8 +116,8 @@ int main(int argc, char** argv) {
         npixels = bias_width * bias_height;
 
         // bias images memory allocation
-        u_int16_t *bias_all = nullptr;
-        CHECK(cudaMallocManaged(&bias_all, npixels * bias_count * sizeof(u_int16_t)));
+        uint16_t *bias_all = nullptr;
+        CHECK(cudaMallocManaged(&bias_all, npixels * bias_count * sizeof(uint16_t)));
 
         // read all bias images
         if (load_images_to_memory_prefetch(bias_path, bias_all, bias_width, bias_height, bias_n_chan, bias_count, dev) != 0) {
@@ -128,11 +126,11 @@ int main(int argc, char** argv) {
         }
 
         // master bias memory allocation
-        CHECK(cudaMallocManaged(&master_bias, npixels * sizeof(u_int16_t)));
-        CHECK(cudaMemPrefetchAsync(master_bias, npixels * sizeof(u_int16_t), devLoc, 0));
+        CHECK(cudaMallocManaged(&master_bias, npixels * sizeof(float)));
+        CHECK(cudaMemPrefetchAsync(master_bias, npixels * sizeof(float), devLoc, 0));
 
         // master bias computation
-        masterBias(bias_all, master_bias, bias_width, bias_height, bias_count);
+        masterBias_gpu(bias_all, master_bias, bias_width, bias_height, bias_count);
 
         // free bias images memory
         CHECK(cudaFree(bias_all));
@@ -148,7 +146,7 @@ int main(int argc, char** argv) {
 
     long dark_width=0, dark_height=0, dark_n_chan=0;
     int dark_count=0;
-    u_int16_t *master_dark = nullptr;
+    float *master_dark = nullptr;
 
     // check if there's already a master_dark in the output directory
     string master_dark_file;
@@ -161,7 +159,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Invalid master dark dimensions - they need to be the same as master bias!\n");
             return 1;
         }
-        CHECK(cudaMallocManaged(&master_dark, npixels * sizeof(u_int16_t)));
+        CHECK(cudaMallocManaged(&master_dark, npixels * sizeof(float)));
         get_fits_data(fpdark, npixels, master_dark);
     }
     // If no existing master, check if dark_path is a file (direct master dark)
@@ -173,7 +171,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Invalid master dark dimensions - they need to be the same as master bias!\n");
             return 1;
         }
-        CHECK(cudaMallocManaged(&master_dark, npixels * sizeof(u_int16_t)));
+        CHECK(cudaMallocManaged(&master_dark, npixels * sizeof(float)));
         get_fits_data(fpdark, npixels, master_dark);
     }
     // Otherwise, compute from dark directory
@@ -188,8 +186,8 @@ int main(int argc, char** argv) {
         }
 
         // dark images memory allocation
-        u_int16_t *dark_all = nullptr;
-        CHECK(cudaMallocManaged(&dark_all, npixels * dark_count * sizeof(u_int16_t)));
+        uint16_t *dark_all = nullptr;
+        CHECK(cudaMallocManaged(&dark_all, npixels * dark_count * sizeof(uint16_t)));
 
         // read all dark images
         if (load_images_to_memory_prefetch(dark_path, dark_all, dark_width, dark_height, dark_n_chan, dark_count, dev) != 0) {
@@ -198,11 +196,11 @@ int main(int argc, char** argv) {
         }
 
         // master dark memory allocation
-        CHECK(cudaMallocManaged(&master_dark, npixels * sizeof(u_int16_t)));
-        CHECK(cudaMemPrefetchAsync(master_dark, npixels * sizeof(u_int16_t), devLoc, 0));
+        CHECK(cudaMallocManaged(&master_dark, npixels * sizeof(float)));
+        CHECK(cudaMemPrefetchAsync(master_dark, npixels * sizeof(float), devLoc, 0));
 
         // master dark computation
-        masterDark(dark_all, master_bias, master_dark, dark_width, dark_height, dark_count);
+        masterDark_gpu(dark_all, master_bias, master_dark, dark_width, dark_height, dark_count);
 
         // free dark images memory
         CHECK(cudaFree(dark_all));
@@ -219,7 +217,7 @@ int main(int argc, char** argv) {
 
     long flat_width=0, flat_height=0, flat_n_chan=0;
     int flat_count=0;
-    u_int16_t *master_flat = nullptr;
+    float *master_flat = nullptr;
 
     // First, check if there's already a master_flat in the output directory
     string master_flat_file;
@@ -232,7 +230,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Invalid master flat dimensions - they need to be the same as master bias!\n");
             return 1;
         }
-        CHECK(cudaMallocManaged(&master_flat, npixels * sizeof(u_int16_t)));
+        CHECK(cudaMallocManaged(&master_flat, npixels * sizeof(float)));
         get_fits_data(fpflat, npixels, master_flat);
     }
     // If no existing master, check if flat_path is a file (direct master flat)
@@ -244,7 +242,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Invalid master flat dimensions - they need to be the same as master bias!\n");
             return 1;
         }
-        CHECK(cudaMallocManaged(&master_flat, npixels * sizeof(u_int16_t)));
+        CHECK(cudaMallocManaged(&master_flat, npixels * sizeof(float)));
         get_fits_data(fpflat, npixels, master_flat);
     }
     // Otherwise, compute from flat directory
@@ -259,8 +257,8 @@ int main(int argc, char** argv) {
         }
 
         // flat images memory allocation
-        u_int16_t *flat_all = nullptr;
-        CHECK(cudaMallocManaged(&flat_all, npixels * flat_count * sizeof(u_int16_t)));
+        uint16_t *flat_all = nullptr;
+        CHECK(cudaMallocManaged(&flat_all, npixels * flat_count * sizeof(uint16_t)));
 
         // read all flat images
         if (load_images_to_memory_prefetch(flat_path, flat_all, flat_width, flat_height, flat_n_chan, flat_count, dev) != 0) {
@@ -269,11 +267,11 @@ int main(int argc, char** argv) {
         }
 
         // master flat memory allocation
-        CHECK(cudaMallocManaged(&master_flat, npixels * sizeof(u_int16_t)));
-        CHECK(cudaMemPrefetchAsync(master_flat, npixels * sizeof(u_int16_t), devLoc, 0));
+        CHECK(cudaMallocManaged(&master_flat, npixels * sizeof(float)));
+        CHECK(cudaMemPrefetchAsync(master_flat, npixels * sizeof(float), devLoc, 0));
 
         // master flat computation
-        masterFlat(flat_all, master_bias, master_flat, flat_width, flat_height, flat_count);
+        masterFlat_gpu(flat_all, master_bias, master_flat, flat_width, flat_height, flat_count);
 
         // free flat images memory
         CHECK(cudaFree(flat_all));
@@ -319,11 +317,13 @@ int main(int argc, char** argv) {
     }
 
     // memory allocation for images
-    u_int16_t *light_all = nullptr, *calibrated_all = nullptr;
-    CHECK(cudaMallocManaged(&light_all, npixels * light_count * sizeof(u_int16_t)));
-    CHECK(cudaMallocManaged(&calibrated_all, npixels * light_count * sizeof(u_int16_t)));
+    uint16_t *light_all = nullptr, *calibrated_all = nullptr;
+    CHECK(cudaMallocManaged(&light_all, npixels * light_count * sizeof(uint16_t)));
+    CHECK(cudaMallocManaged(&calibrated_all, npixels * light_count * sizeof(uint16_t)));
+    CHECK(cudaMemPrefetchAsync(calibrated_all, npixels * light_count * sizeof(uint16_t), devLoc, 0));
     
-    printf("memory allocation done, used %f Mb\n", 2*npixels*light_count*sizeof(u_int16_t) / 1e6);
+    
+    printf("memory allocation done, used %f Mb\n", 2*npixels*light_count*sizeof(uint16_t) / 1e6);
 
     // memory allocation for timestamps of images
     double *timestamps = new double[light_count];
@@ -338,7 +338,7 @@ int main(int argc, char** argv) {
     printf("Reference image index:%d\n", central_image_index);
 
     // calibration
-    calibrateLights(light_all, master_bias, master_dark, master_flat, calibrated_all, light_width, light_height, light_count);
+    calibrateLights_gpu(light_all, master_bias, master_dark, master_flat, calibrated_all, light_width, light_height, light_count);
     printf("calibration done\n");
     
     // free light_all memory and masters memory
@@ -351,13 +351,15 @@ int main(int argc, char** argv) {
     // ==================================================================
     // 3. Debayering
 
-    u_int16_t *debayered_all = nullptr, *aligned_all = nullptr;
-    u_int16_t *mem_block = nullptr;
-    CHECK(cudaMallocManaged(&mem_block, npixels*3*(light_count+1)*sizeof(u_int16_t)));
+    uint16_t *debayered_all = nullptr, *aligned_all = nullptr;
+    uint16_t *mem_block = nullptr;
+    CHECK(cudaMallocManaged(&mem_block, npixels*3*(light_count+1)*sizeof(uint16_t)));
+    CHECK(cudaMemPrefetchAsync(mem_block, npixels*3*(light_count+1)*sizeof(uint16_t), devLoc, 0));
+
     debayered_all = mem_block + npixels*3;
     aligned_all   = mem_block;
     
-    demosaic_bilinear_rggb(calibrated_all, debayered_all, light_width, light_height, light_count);
+    demosaic_mhc_rggb_gpu(calibrated_all, debayered_all, light_width, light_height, light_count);
     printf("debayering done\n");
 
     // free calibrated_all memory
@@ -368,23 +370,25 @@ int main(int argc, char** argv) {
 
 
     // ===== 4.1 allocate memory =====
-    u_int16_t *gray_img = nullptr;
-    u_int8_t *threshold_img = nullptr;
+    uint16_t *gray_img = nullptr;
+    uint8_t *threshold_img = nullptr;
     star *stars = nullptr;
-    u_int32_t *num_stars = nullptr;
-    CHECK(cudaMallocManaged(&gray_img, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMallocManaged(&threshold_img, npixels * sizeof(u_int8_t)));
+    uint32_t *num_stars = nullptr;
+    CHECK(cudaMallocManaged(&gray_img, npixels * sizeof(uint16_t)));
+    CHECK(cudaMallocManaged(&threshold_img, npixels * sizeof(uint8_t)));
     CHECK(cudaMallocManaged(&stars, 1024 * sizeof(star)));               // TODO: parametrize max starts
-    CHECK(cudaMallocManaged(&num_stars, sizeof(u_int32_t)));
+    CHECK(cudaMallocManaged(&num_stars, sizeof(uint32_t)));
+    CHECK(cudaMemPrefetchAsync(gray_img, npixels*sizeof(uint16_t), devLoc, 0));
+    CHECK(cudaMemPrefetchAsync(threshold_img, npixels*sizeof(uint8_t), devLoc, 0));
 
     const int MAX_STARS_TO_DETECT = 500;  // Limit stars for better matching
 
     
 
     // ===== 4.2 grayscale =====
-    u_int16_t *central_image = debayered_all + (central_image_index * npixels * 3);
+    uint16_t *central_image = debayered_all + (central_image_index * npixels * 3);
     to_grayscale_planar_gpu(central_image, gray_img, npixels);
-    save_image_fits(out_path, "central_image_calibrated", central_image, light_width, light_height, 3);
+    //save_image_fits(out_path, "central_image_calibrated", central_image, light_width, light_height, 3);
 
 
     // ===== 4.3 thresholding =====
@@ -392,13 +396,15 @@ int main(int argc, char** argv) {
         t_par.window_size = 201;    
         t_par.threshold_scale = 0.7F;
     compute_threshold_gpu(gray_img, threshold_img, light_width, light_height, t_par);
+    printf("threshold done\n");
 
     // ===== 4.4 detect stars =====
     detect_stars_gpu(threshold_img, light_width, light_height, 100, 10, stars, num_stars, MAX_STARS_TO_DETECT);
 
     // ===== 4.5 populate star details =====
-    star_detail *stars_details = new star_detail[*num_stars];
-    populate_star_details(stars_details, stars, *num_stars, central_image, gray_img, light_width, npixels);
+    star_detail *stars_details = nullptr;
+    CHECK(cudaMallocManaged(&stars_details, *num_stars * sizeof(star_detail)));
+    populate_star_details_gpu(stars_details, stars, *num_stars, central_image, gray_img, light_width, npixels);
 
     // ===== 4.6 keypoints and descriptors ===== (for opencv)
     std::vector<cv::KeyPoint> keypoints_central_img;
@@ -407,7 +413,7 @@ int main(int argc, char** argv) {
 
     bool ok = build_star_descriptors(
         stars_details, *num_stars, light_width, light_height, keypoints_central_img, descriptors_central_img);
-    delete[] stars_details;
+    CHECK(cudaFree(stars_details));
     if (!ok) {
         printf("Not enough stars to build descriptors");
         return 1;
@@ -420,15 +426,15 @@ int main(int argc, char** argv) {
     // ===== 4.7 for every image =====
     int index = 0;
     for (int i = 0; i < light_count; i++) {
-        u_int16_t *current_img = debayered_all  + (i     * npixels * 3);
-        u_int16_t *dest        = aligned_all    + (index * npixels * 3);
+        uint16_t *current_img = debayered_all  + (i     * npixels * 3);
+        uint16_t *dest        = aligned_all    + (index * npixels * 3);
 
         if (i == central_image_index) {
             // Copia diretta dell'immagine centrale (senza warp)
-            CHECK(cudaMemcpy(dest, current_img, npixels * 3 * sizeof(u_int16_t), cudaMemcpyDefault));
+            CHECK(cudaMemcpy(dest, current_img, npixels * 3 * sizeof(uint16_t), cudaMemcpyDefault));
             char aligned_name[64];
             snprintf(aligned_name, sizeof(aligned_name), "aligned_%04d", i);
-            save_image_fits(aligned_dir, aligned_name, dest, light_width, light_height, 3);
+            //save_image_fits(aligned_dir, aligned_name, dest, light_width, light_height, 3);
             index++;
             continue;
         }
@@ -438,12 +444,13 @@ int main(int argc, char** argv) {
 
         detect_stars_gpu(threshold_img, light_width, light_height, 100, 10, stars, num_stars, MAX_STARS_TO_DETECT);
 
-        star_detail *cur_stars_details = new star_detail[*num_stars];
-        populate_star_details(cur_stars_details, stars, *num_stars, current_img, gray_img, light_width, npixels);
+        star_detail *cur_stars_details = nullptr;
+        CHECK(cudaMallocManaged(&cur_stars_details, *num_stars * sizeof(star_detail)));
+        populate_star_details_gpu(cur_stars_details, stars, *num_stars, current_img, gray_img, light_width, npixels);
 
         ok = build_star_descriptors(
             cur_stars_details, *num_stars, light_width, light_height, keypoints, descriptors);
-        delete[] cur_stars_details;
+        CHECK(cudaFree(cur_stars_details));
 
         if (!ok) {
             printf("Not enough stars to build descriptors for image %d, skipping\n", i);
@@ -460,7 +467,7 @@ int main(int argc, char** argv) {
         // Save aligned image
         char aligned_name[64];
         snprintf(aligned_name, sizeof(aligned_name), "aligned_%04d", i);
-        save_image_fits(aligned_dir, aligned_name, dest, light_width, light_height, 3);
+        //save_image_fits(aligned_dir, aligned_name, dest, light_width, light_height, 3);
         index++;
     }
 
@@ -480,13 +487,13 @@ int main(int argc, char** argv) {
     // 5. stacking
     
     // ===== 5.1 stacked image memory allocation =====
-    u_int16_t *stacked_img = nullptr;
-    CHECK(cudaMallocManaged(&stacked_img, npixels * 3 * sizeof(u_int16_t)));
+    uint16_t *stacked_img = nullptr;
+    CHECK(cudaMallocManaged(&stacked_img, npixels * 3 * sizeof(uint16_t)));
 
     // ===== 5.2 stacking =====
     float kappa = 3.0f;
-    u_int16_t sigma = 5;
-    alfa_sigma(aligned_all, stacked_img, (u_int16_t)aligned_count, npixels*3, kappa, sigma);
+    uint16_t it = 5;
+    winsorized_sigma_clipping_gpu(aligned_all, stacked_img, (uint16_t)aligned_count, npixels*3);
 
     // ===== 5.3 saving result =====
     save_image_fits(out_path, "stacked", stacked_img, light_width, light_height, 3);

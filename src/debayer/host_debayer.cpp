@@ -1,5 +1,5 @@
-#include "debayer.h"
-#include "MHC_filters.h"
+#include "debayer.hh"
+#include "MHC_filters.hh"
 #include <cstdint>
 #include <algorithm>
 

@@ -1,8 +1,8 @@
 #include <stdint.h>
 #include <cmath>
 #include <float.h>
-#include "cuda_helper.h"
-#include "common.h"
+#include "cuda_helper.hh"
+#include "common.hh"
 
 // Constants
 #define OTSU_HISTOGRAM_SIZE  4096
@@ -10,15 +10,15 @@
 #define OTSU_NUM_BLOCKS 32
 
 
-__global__ void cuda_kernel_find_minmax(const u_int16_t *image, u_int64_t npixels, u_int16_t *block_min, u_int16_t *block_max) {
-    extern __shared__ u_int16_t shared_buf[];
-    u_int16_t *s_min = shared_buf;
-    u_int16_t *s_max = shared_buf + blockDim.x;
+__global__ void cuda_kernel_find_minmax(const uint16_t *image, uint64_t npixels, uint16_t *block_min, uint16_t *block_max) {
+    extern __shared__ uint16_t shared_buf[];
+    uint16_t *s_min = shared_buf;
+    uint16_t *s_max = shared_buf + blockDim.x;
 
-    u_int64_t idx = (u_int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t idx = (uint64_t)blockIdx.x * blockDim.x + threadIdx.x;
     int tid = threadIdx.x;
 
-    u_int16_t val = (idx < npixels) ? image[idx] : 65535;
+    uint16_t val = (idx < npixels) ? image[idx] : 65535;
     s_min[tid] = val;
     s_max[tid] = val;
     __syncthreads();
@@ -42,25 +42,24 @@ __global__ void cuda_kernel_find_minmax(const u_int16_t *image, u_int64_t npixel
 // ---------------------------------------------------------------------------
 // 2.  Histogram: map [img_min, img_max] → [0, OTSU_HISTOGRAM_SIZE-1]
 // ---------------------------------------------------------------------------
-__global__ void cuda_kernel_calculate_histogram(const u_int16_t *image,
-                                                u_int64_t npixels,
-                                                u_int32_t *histogram,
-                                                u_int16_t img_min,
-                                                u_int16_t img_max) {
-    u_int64_t idx = (u_int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void cuda_kernel_calculate_histogram(const uint16_t *image,
+                                                uint64_t npixels,
+                                                uint32_t *histogram,
+                                                uint16_t img_min,
+                                                uint16_t img_max) {
+    uint64_t idx = (uint64_t)blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx >= npixels)
         return;
 
-    u_int16_t v = image[idx];
+    auto v = image[idx];
     if (v < img_min)
         v = img_min;
     if (v > img_max)
         v = img_max;
 
     // scale to [0, OTSU_HISTOGRAM_SIZE-1]
-    int bin = (int)((u_int64_t)(v - img_min) * (OTSU_HISTOGRAM_SIZE - 1)
-                    / (img_max - img_min));
+    int bin = (v - img_min) * (OTSU_HISTOGRAM_SIZE - 1) / (img_max - img_min);
     atomicAdd(&histogram[bin], 1);
 }
 
@@ -96,12 +95,12 @@ __global__ void cuda_kernel_compute_class_variances(const double *histogram,
 
 // ---------------------------------------------------------------------------
 // 4.  Global mean (parallel reduction)
-__global__ void cuda_kernel_calculate_mean(const u_int16_t *image,
-                                           u_int64_t npixels,
+__global__ void cuda_kernel_calculate_mean(const uint16_t *image,
+                                           uint64_t npixels,
                                            double *partial_sums) {
     extern __shared__ double shared_sum[];
 
-    u_int64_t idx = (u_int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t idx = (uint64_t)blockIdx.x * blockDim.x + threadIdx.x;
     int tid = threadIdx.x;
 
     shared_sum[tid] = (idx < npixels) ? (double)image[idx] : 0.0;
@@ -119,43 +118,37 @@ __global__ void cuda_kernel_calculate_mean(const u_int16_t *image,
 
 // ---------------------------------------------------------------------------
 // 5.  Optimized integral-image kernels
-__global__ void cuda_kernel_integral_image_row_pass(const u_int16_t *image,
+__global__ void cuda_kernel_integral_image_row_pass(const uint16_t *image,
                                                     double *integral,
-                                                    u_int64_t width,
-                                                    u_int64_t height) {
-    u_int64_t y = blockIdx.x * blockDim.x + threadIdx.x;
+                                                    uint64_t width,
+                                                    uint64_t height) {
+    uint64_t y = blockIdx.x * blockDim.x + threadIdx.x;
     if (y >= height)
         return;
 
-    u_int64_t row_offset = y * width;
+    uint64_t row_offset = y * width;
     double row_sum = 0.0;
-    for (u_int64_t x = 0; x < width; x++) {
+    for (uint64_t x = 0; x < width; x++) {
         row_sum += (double)image[row_offset + x];
         integral[row_offset + x] = row_sum;
     }
 }
 
-__global__ void cuda_kernel_integral_image_col_pass(double *integral,
-                                                     u_int64_t width,
-                                                     u_int64_t height) {
-    u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void cuda_kernel_integral_image_col_pass(double *integral, uint64_t width, uint64_t height) {
+    uint64_t x = blockIdx.x * blockDim.x + threadIdx.x;
     if (x >= width)
         return;
 
     double col_sum = 0.0;
-    for (u_int64_t y = 0; y < height; y++) {
+    for (uint64_t y = 0; y < height; y++) {
         col_sum += integral[y * width + x];
         integral[y * width + x] = col_sum;
     }
 }
 
-__global__ void cuda_kernel_mean_filter_integral(const double *integral,
-                                                  double *temp_filtered,
-                                                  u_int64_t width,
-                                                  u_int64_t height,
-                                                  int half_window) {
-    u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
-    u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
+__global__ void cuda_kernel_mean_filter_integral(const double *integral, double *temp_filtered, uint64_t width, uint64_t height, int half_window) {
+    uint64_t x = blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= width || y >= height)
         return;
 
@@ -186,13 +179,13 @@ __global__ void cuda_kernel_mean_filter_integral(const double *integral,
 
 // ---------------------------------------------------------------------------
 // 6.  Centralized threshold kernel
-__global__ void cuda_kernel_otsu_centralized_threshold(const u_int16_t *image,
+__global__ void cuda_kernel_otsu_centralized_threshold(const uint16_t *image,
                                                        const double *mean_filtered,
-                                                       u_int8_t *output,
-                                                       u_int64_t npixels,
+                                                       uint8_t *output,
+                                                       uint64_t npixels,
                                                        double global_mean,
                                                        double otsu_threshold) {
-    u_int64_t idx = (u_int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t idx = (uint64_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= npixels)
         return;
 
@@ -208,22 +201,22 @@ __global__ void cuda_kernel_otsu_centralized_threshold(const u_int16_t *image,
 // =========================================================================
 //  Host-side helper functions
 
-inline void cuda_find_minmax(const u_int16_t *d_image, u_int64_t npixels,
-                             u_int16_t &out_min, u_int16_t &out_max) {
+inline void cuda_find_minmax(const uint16_t *d_image, uint64_t npixels,
+                             uint16_t &out_min, uint16_t &out_max) {
     int blocks = (npixels + OTSU_THREADS_PER_BLOCK - 1) / OTSU_THREADS_PER_BLOCK;
 
-    u_int16_t *d_block_min, *d_block_max;
-    CHECK(cudaMalloc(&d_block_min, sizeof(u_int16_t) * blocks));
-    CHECK(cudaMalloc(&d_block_max, sizeof(u_int16_t) * blocks));
+    uint16_t *d_block_min, *d_block_max;
+    CHECK(cudaMalloc(&d_block_min, sizeof(uint16_t) * blocks));
+    CHECK(cudaMalloc(&d_block_max, sizeof(uint16_t) * blocks));
 
-    cuda_kernel_find_minmax<<<blocks, OTSU_THREADS_PER_BLOCK, 2 * OTSU_THREADS_PER_BLOCK * sizeof(u_int16_t)>>>(
+    cuda_kernel_find_minmax<<<blocks, OTSU_THREADS_PER_BLOCK, 2 * OTSU_THREADS_PER_BLOCK * sizeof(uint16_t)>>>(
         d_image, npixels, d_block_min, d_block_max);
     CHECK(cudaDeviceSynchronize());
 
-    u_int16_t *h_min = new u_int16_t[blocks];
-    u_int16_t *h_max = new u_int16_t[blocks];
-    CHECK(cudaMemcpy(h_min, d_block_min, sizeof(u_int16_t) * blocks, cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(h_max, d_block_max, sizeof(u_int16_t) * blocks, cudaMemcpyDeviceToHost));
+    uint16_t *h_min = new uint16_t[blocks];
+    uint16_t *h_max = new uint16_t[blocks];
+    CHECK(cudaMemcpy(h_min, d_block_min, sizeof(uint16_t) * blocks, cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(h_max, d_block_max, sizeof(uint16_t) * blocks, cudaMemcpyDeviceToHost));
 
     out_min = 65535; out_max = 0;
     for (int i = 0; i < blocks; i++) {
@@ -238,23 +231,20 @@ inline void cuda_find_minmax(const u_int16_t *d_image, u_int64_t npixels,
     CHECK(cudaFree(d_block_max));
 }
 
-inline double* cuda_calculate_histogram(const u_int16_t *d_image,
-                                        u_int64_t npixels,
-                                        u_int16_t img_min,
-                                        u_int16_t img_max) {
+inline double* cuda_calculate_histogram(const uint16_t *d_image, uint64_t npixels, uint16_t img_min, uint16_t img_max) {
     // calculate the histogram (done on GPU)
-    u_int32_t *d_histogram;
-    CHECK(cudaMalloc(&d_histogram, sizeof(u_int32_t) * OTSU_HISTOGRAM_SIZE));
-    CHECK(cudaMemset(d_histogram, 0, sizeof(u_int32_t) * OTSU_HISTOGRAM_SIZE));
+    uint32_t *d_histogram;
+    CHECK(cudaMalloc(&d_histogram, sizeof(uint32_t) * OTSU_HISTOGRAM_SIZE));
+    CHECK(cudaMemset(d_histogram, 0, sizeof(uint32_t) * OTSU_HISTOGRAM_SIZE));
 
     int blocks = (npixels + OTSU_THREADS_PER_BLOCK - 1) / OTSU_THREADS_PER_BLOCK;
     cuda_kernel_calculate_histogram<<<blocks, OTSU_THREADS_PER_BLOCK>>>(
         d_image, npixels, d_histogram, img_min, img_max);
 
     // Allocate memory and copy histogram to host
-    u_int32_t *h_histogram = new u_int32_t[OTSU_HISTOGRAM_SIZE];
+    uint32_t *h_histogram = new uint32_t[OTSU_HISTOGRAM_SIZE];
     CHECK(cudaDeviceSynchronize());
-    CHECK(cudaMemcpy(h_histogram, d_histogram, sizeof(u_int32_t) * OTSU_HISTOGRAM_SIZE, cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(h_histogram, d_histogram, sizeof(uint32_t) * OTSU_HISTOGRAM_SIZE, cudaMemcpyDeviceToHost));
     // Free device histogram memory
     CHECK(cudaFree(d_histogram));
 
@@ -306,14 +296,14 @@ inline int cuda_find_otsu_threshold(const double *histogram) {
 }
 
 // bin index -> threshold value
-inline double bin_to_value(int bin, u_int16_t img_min, u_int16_t img_max) {
+inline double bin_to_value(int bin, uint16_t img_min, uint16_t img_max) {
     return (double)img_min
            + (double)bin * (double)(img_max - img_min)
                / (double)(OTSU_HISTOGRAM_SIZE - 1);
 }
 
 // global mean (parallel reduction)
-inline double cuda_calculate_mean(const u_int16_t *d_image, u_int64_t npixels) {
+inline double cuda_calculate_mean(const uint16_t *d_image, uint64_t npixels) {
     int blocks = (npixels + OTSU_THREADS_PER_BLOCK - 1) / OTSU_THREADS_PER_BLOCK;
 
     double *d_partial_sums;
@@ -337,16 +327,16 @@ inline double cuda_calculate_mean(const u_int16_t *d_image, u_int64_t npixels) {
 
 // =========================================================================
 //  Host-side main function
-void cuda_otsu_centralized_threshold(const u_int16_t *d_image,
-                                     u_int8_t *d_output,
-                                     u_int64_t width,
-                                     u_int64_t height,
+void cuda_otsu_centralized_threshold(const uint16_t *d_image,
+                                     uint8_t *d_output,
+                                     uint64_t width,
+                                     uint64_t height,
                                      int window_size,
                                      float th_scale) {
-    u_int64_t npixels = width * height;
+    uint64_t npixels = width * height;
 
     // 1. find image min and max
-    u_int16_t img_min, img_max;
+    uint16_t img_min, img_max;
     cuda_find_minmax(d_image, npixels, img_min, img_max);
 
     // 1.1 case of uniform image, avoid / 0 

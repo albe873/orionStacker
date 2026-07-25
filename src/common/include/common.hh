@@ -1,11 +1,10 @@
-// common.h
+// common.hh
 
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef COMMON_HH
+#define COMMON_HH
 
 #include <ctime>
 #include <cstring>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -33,4 +32,4 @@ inline int is_directory(const char *path) {
     return S_ISDIR(path_stat.st_mode);
 }
 
-#endif // COMMON_H
+#endif // COMMON_HH

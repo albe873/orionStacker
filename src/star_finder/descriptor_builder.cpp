@@ -1,11 +1,11 @@
-#include "star_finder.h"
+#include "star_finder.hh"
 
 #include "opencv2/imgproc.hpp"
 #include <opencv2/calib3d.hpp>
 
 
 bool build_star_descriptors(const star_detail *stars,
-                            u_int32_t count,
+                            uint32_t count,
                             long width,
                             long height,
                             std::vector<cv::KeyPoint> &keypoints,
@@ -34,7 +34,7 @@ bool build_star_descriptors(const star_detail *stars,
         int idx1 = -1;
         int idx2 = -1;
 
-        for (u_int32_t j = 0; j < count; j++) {
+        for (uint32_t j = 0; j < count; j++) {
             if (j == i) {
                 continue;
             }
@@ -98,7 +98,7 @@ bool build_star_descriptors(const star_detail *stars,
 }
 
 bool build_star_descriptors_generalized(const star_detail *stars,
-                                        u_int32_t count,
+                                        uint32_t count,
                                         long width,
                                         long height,
                                         int neighbors,
@@ -111,7 +111,7 @@ bool build_star_descriptors_generalized(const star_detail *stars,
         return false;
     }
 
-    if (count < static_cast<u_int32_t>(neighbors + 1)) {
+    if (count < static_cast<uint32_t>(neighbors + 1)) {
         return false;
     }
 
@@ -124,7 +124,7 @@ bool build_star_descriptors_generalized(const star_detail *stars,
     std::vector<float> all_rows;
     all_rows.reserve(static_cast<size_t>(count) * static_cast<size_t>(descriptor_dim));
 
-    for (u_int32_t i = 0; i < count; i++) {
+    for (uint32_t i = 0; i < count; i++) {
         const float xi = static_cast<float>(stars[i].x);
         const float yi = static_cast<float>(stars[i].y);
 

@@ -1,10 +1,10 @@
-#include "fits_helper.h"
-#include "cuda_helper.h"
+#include "fits_helper.hh"
+#include "cuda_helper.hh"
 
 #include <dirent.h>
 #include <string.h>
 
-int load_images_to_memory_prefetch(const char *dir_path, u_int16_t *img_all,
+int load_images_to_memory_prefetch(const char *dir_path, uint16_t *img_all,
                                    long width, long height, long n_chan,
                                    int count, int dev, double *timestamps) {
     DIR *dir = opendir(dir_path);
@@ -45,7 +45,7 @@ int load_images_to_memory_prefetch(const char *dir_path, u_int16_t *img_all,
         fits_close_file(fptr, &status);
 
         CHECK(cudaMemPrefetchAsync(img_all + idx * data_size,
-                                   data_size * sizeof(u_int16_t),
+                                   data_size * sizeof(uint16_t),
                                    devLoc, 0));
         idx++;
     }

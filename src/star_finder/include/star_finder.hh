@@ -1,8 +1,7 @@
-#ifndef STAR_FINDER_H
-#define STAR_FINDER_H
+#ifndef STAR_FINDER_HH
+#define STAR_FINDER_HH
 
 #include <stdint.h>
-#include <sys/types.h>
 
 #include "opencv2/core.hpp"
 #include "opencv2/features2d.hpp"
@@ -41,66 +40,66 @@ enum threshold_type {
 
 struct threshold_params {
     threshold_type type = OTSU_CENTRALIZED;
-    u_int16_t threshold;
-    u_int16_t window_size = 101;
-    u_int16_t reduce_factor;
+    uint16_t threshold;
+    uint16_t window_size = 101;
+    uint16_t reduce_factor;
     float threshold_scale = 0.7f;
 };
 
 // GPU
 
 void to_grayscale_planar_gpu(
-    const u_int16_t* __restrict__ img,
-    u_int16_t* __restrict__ img_gray,
-    u_int64_t npixels
+    const uint16_t* __restrict__ img,
+    uint16_t* __restrict__ img_gray,
+    uint64_t npixels
 );
 
 void compute_threshold_gpu(
-    const u_int16_t* __restrict__ img,
-    u_int8_t* __restrict__ out_img,
-    u_int64_t width,
-    u_int64_t height,
+    const uint16_t* __restrict__ img,
+    uint8_t* __restrict__ out_img,
+    uint64_t width,
+    uint64_t height,
     threshold_params params
 );
 
 void detect_stars_gpu(
-    const u_int8_t* __restrict__ threshold_image,
-    u_int64_t width,
-    u_int64_t height,
-    u_int16_t max_star_size,
-    u_int16_t min_star_size,
+    const uint8_t* __restrict__ threshold_image,
+    uint64_t width,
+    uint64_t height,
+    uint16_t max_star_size,
+    uint16_t min_star_size,
     star *d_stars,
-    u_int32_t *d_num_stars,
-    u_int32_t max_stars
+    uint32_t *d_num_stars,
+    uint32_t max_stars
 );
 
 void populate_star_details_gpu(
     star_detail* stars_details,
     star* stars,
-    u_int32_t n_stars,
-    const u_int16_t* img_rgb,
-    const u_int16_t* img_gray,
-    u_int64_t width,
-    u_int64_t npixels
+    uint32_t n_stars,
+    const uint16_t* img_rgb,
+    const uint16_t* img_gray,
+    uint64_t width,
+    uint64_t npixels
 );
 
 
 // CPU
-void to_grayscale_planar(
+void to_grayscale_planar_cpu(
     const uint16_t* image,
     uint16_t* gray_image,
     uint64_t npixels
 );
 
-void compute_threshold(
-    const u_int16_t* img,
-    u_int8_t* out_img,
-    u_int64_t width,
-    u_int64_t height,
+void compute_threshold_cpu(
+    const uint16_t* img,
+    uint8_t* out_img,
+    uint64_t width,
+    uint64_t height,
     threshold_params params
 );
 
-void detect_stars(
+void detect_stars_cpu(
     const uint8_t* threshold_image,
     uint64_t width,
     uint64_t height,
@@ -114,18 +113,18 @@ void detect_stars(
 void populate_star_details(
     star_detail *stars_details,
     star *stars,
-    u_int32_t n_stars,
-    const u_int16_t* img_rgb,
-    const u_int16_t* img_gray,
-    u_int64_t width,
-    u_int64_t npixels
+    uint32_t n_stars,
+    const uint16_t* img_rgb,
+    const uint16_t* img_gray,
+    uint64_t width,
+    uint64_t npixels
 );
 
 void draw_stars(
-    u_int16_t* img,
-    u_int64_t  width,
+    uint16_t* img,
+    uint64_t  width,
     const star *stars,
-    u_int32_t  n_stars
+    uint32_t  n_stars
 );
 
 
@@ -133,7 +132,7 @@ void draw_stars(
 
 bool build_star_descriptors(
     const star_detail *stars,
-    u_int32_t count,
+    uint32_t count,
     long width,
     long height,
     std::vector<cv::KeyPoint> &keypoints,
@@ -142,7 +141,7 @@ bool build_star_descriptors(
 
 bool build_star_descriptors_generalized(
     const star_detail *stars,
-    u_int32_t count,
+    uint32_t count,
     long width,
     long height,
     int neighbors,
@@ -168,22 +167,20 @@ cv::Mat estimate_affine_partial_stars(
 
 
 void warp_affine_planar_cpu(
-    const u_int16_t *source,
-    u_int16_t       *dest,
+    const uint16_t  *source,
+    uint16_t        *dest,
     const cv::Mat   &affine_2x3,
-    long            width, 
-    long            height
+    int64_t         width, 
+    int64_t         height
 );
 
 void warp_affine_planar_gpu(
-    const u_int16_t *source,
-    u_int16_t       *dest,
+    const uint16_t  *source,
+    uint16_t        *dest,
     const cv::Mat   &affine_2x3,
-    long            width,
-    long            height
+    int64_t        width,
+    int64_t        height
 );
 
 
-
-
-#endif // STAR_FINDER_H
+#endif

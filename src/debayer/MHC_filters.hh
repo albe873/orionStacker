@@ -1,5 +1,5 @@
-#ifndef MHC_FILTERS_H
-#define MHC_FILTERS_H
+#ifndef MHC_FILTERS_HH
+#define MHC_FILTERS_HH
 
 // ============================================================================
 // Malvar-He-Cutler demosaicing kernels (5x5) - RGGB Bayer pattern

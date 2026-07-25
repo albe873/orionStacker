@@ -1,12 +1,8 @@
-// device_threshold.h
-
-#ifndef CUDA_DEVICE_THRESHOLDING_H
-#define CUDA_DEVICE_THRESHOLDING_H
 
 // fits data is in planar format
 // calculating two pixels at a time to improve cache hit rate
-__global__ void to_grayscale_planar_uint16(const u_int16_t *image, u_int16_t *gray_image, const u_int64_t npixels, const u_int64_t npixels2) {
-    const u_int64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+__global__ void kernel_grayscale_planar(const uint16_t *image, uint16_t *gray_image, const uint64_t npixels, const uint64_t npixels2) {
+    const uint64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
     const auto idx2 = idx1 + 1;
 
     if (idx2 < npixels) {
@@ -30,8 +26,8 @@ __global__ void to_grayscale_planar_uint16(const u_int16_t *image, u_int16_t *gr
     }
 }
 
-__global__ void to_grayscale_planar_uint8(const u_int8_t *image, u_int8_t *gray_image, const u_int64_t npixels, const u_int64_t npixels2) {
-    const u_int64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+__global__ void kernel_grayscale_planar(const uint8_t *image, uint8_t *gray_image, const uint64_t npixels, const uint64_t npixels2) {
+    const uint64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
     const auto idx2 = idx1 + 1;
     const auto idx3 = idx1 + 2;
     const auto idx4 = idx1 + 3;
@@ -90,8 +86,8 @@ __global__ void to_grayscale_planar_uint8(const u_int8_t *image, u_int8_t *gray_
 }
 
 // calculating two pixels at a time to improve cache hit rate
-__global__ void simple_threshold_uint16(const u_int16_t *image, u_int8_t *output, const u_int64_t npixels, const u_int16_t threshold) {
-    u_int64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+__global__ void kernel_simple_threshold(const uint16_t *image, uint8_t *output, const uint64_t npixels, const uint16_t threshold) {
+    uint64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
     auto idx2 = idx1 + 1;
 
     if (idx2 < npixels) {
@@ -107,8 +103,8 @@ __global__ void simple_threshold_uint16(const u_int16_t *image, u_int8_t *output
     }
 }
 
-__global__ void simple_threshold_uint8(const u_int8_t *image, u_int8_t *output, const u_int64_t npixels, const u_int8_t threshold) {
-    const u_int64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+__global__ void kernel_simple_threshold(const uint8_t *image, uint8_t *output, const uint64_t npixels, const uint8_t threshold) {
+    const uint64_t idx1 = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
     const auto idx2 = idx1 + 1;
     const auto idx3 = idx1 + 2;
     const auto idx4 = idx1 + 3;
@@ -144,24 +140,24 @@ __global__ void simple_threshold_uint8(const u_int8_t *image, u_int8_t *output, 
 }
 
 template <typename T>
-__global__ void adaptive_threshold(const T *image, u_int8_t *output, const u_int64_t width, const u_int64_t height, 
-                                   u_int16_t windowSize, const T offset) {
-    u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
-    u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
+__global__ void kernel_adaptive_threshold(const T *image, uint8_t *output, const uint64_t width, const uint64_t height, 
+                                          uint16_t windowSize, const T offset) {
+    uint64_t x = blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (x < width && y < height) {
-        const u_int64_t startX = (x > windowSize) ? x - windowSize : 0;
-        const u_int64_t endX = min((u_int64_t)(x + windowSize), width - 1);
-        const u_int64_t startY = (y > windowSize) ? y - windowSize : 0;
-        const u_int64_t endY = min((u_int64_t)(y + windowSize), height - 1);
+        const uint64_t startX = (x > windowSize) ? x - windowSize : 0;
+        const uint64_t endX = min((uint64_t)(x + windowSize), width - 1);
+        const uint64_t startY = (y > windowSize) ? y - windowSize : 0;
+        const uint64_t endY = min((uint64_t)(y + windowSize), height - 1);
 
-        u_int64_t sum = 0;
-        for (u_int64_t i = startY; i <= endY; i++) {
-            for (u_int64_t j = startX; j <= endX; j++) {
+        uint64_t sum = 0;
+        for (uint64_t i = startY; i <= endY; i++) {
+            for (uint64_t j = startX; j <= endX; j++) {
                 sum += image[i * width + j];
             }
         }
-        u_int64_t num_pixels = (endX - startX + 1) * (endY - startY + 1);
+        uint64_t num_pixels = (endX - startX + 1) * (endY - startY + 1);
         T localMean = (num_pixels > 0) ? (sum / num_pixels) : 0;
         T pixel = image[y * width + x];
 
@@ -172,17 +168,17 @@ __global__ void adaptive_threshold(const T *image, u_int8_t *output, const u_int
 
 // Ogni thread si occupa di un pixel dell'immagine ridotta.
 template<typename T>
-__global__ void reduce_image(const T *image, T *reduced_image, u_int64_t width, u_int64_t height, 
-                             u_int64_t new_width, u_int64_t new_height, u_int16_t reduce_factor, u_int32_t squared_reduce_factor) {
-    u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
-    u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
+__global__ void kernel_reduce_image(const T *image, T *reduced_image, uint64_t width, uint64_t height, 
+                                    uint64_t new_width, uint64_t new_height, uint16_t reduce_factor, uint32_t squared_reduce_factor) {
+    uint64_t x = blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (x < new_width && y < new_height) {
-        u_int64_t sum = 0;
-        u_int32_t out_of_range = 0;
-        u_int64_t orig_x, orig_y;
-        for (u_int16_t i = 0; i < reduce_factor; i++) {
-            for (u_int16_t j = 0; j < reduce_factor; j++) {
+        uint64_t sum = 0;
+        uint32_t out_of_range = 0;
+        uint64_t orig_x, orig_y;
+        for (uint16_t i = 0; i < reduce_factor; i++) {
+            for (uint16_t j = 0; j < reduce_factor; j++) {
                 orig_x = x * reduce_factor + i;
                 orig_y = y * reduce_factor + j;
                 if (orig_x >= width || orig_y >= height) {
@@ -197,34 +193,32 @@ __global__ void reduce_image(const T *image, T *reduced_image, u_int64_t width, 
 }
 
 template <typename T>
-__global__ void adaptive_threshold_approximate(
-            const T *image, u_int8_t *output, u_int64_t width, u_int64_t height,
-            const T *reduced_image, u_int64_t reduced_width, u_int16_t reduce_factor, u_int16_t windowSize, T offset
+__global__ void kernel_adaptive_threshold_approximate(
+            const T *image, uint8_t *output, uint64_t width, uint64_t height,
+            const T *reduced_image, uint64_t reduced_width, uint16_t reduce_factor, uint16_t windowSize, T offset
     ) 
 {
-    u_int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
-    u_int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
+    uint64_t x = blockIdx.x * blockDim.x + threadIdx.x;
+    uint64_t y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (x < width && y < height) {
-        u_int16_t halfWindow = windowSize / 2;
-        const u_int64_t startX = (x > halfWindow) ? (x - halfWindow) / reduce_factor : 0;
-        const u_int64_t endX = min((u_int64_t)(x + halfWindow), width - 1) / reduce_factor;
-        const u_int64_t startY = (y > halfWindow) ? (y - halfWindow) / reduce_factor : 0;
-        const u_int64_t endY = min((u_int64_t)(y + halfWindow), height - 1) / reduce_factor;
+        uint16_t halfWindow = windowSize / 2;
+        const uint64_t startX = (x > halfWindow) ? (x - halfWindow) / reduce_factor : 0;
+        const uint64_t endX = min((uint64_t)(x + halfWindow), width - 1) / reduce_factor;
+        const uint64_t startY = (y > halfWindow) ? (y - halfWindow) / reduce_factor : 0;
+        const uint64_t endY = min((uint64_t)(y + halfWindow), height - 1) / reduce_factor;
 
-        u_int64_t sum = 0;
-        for (u_int64_t i = startY; i <= endY; i++) {
-            for (u_int64_t j = startX; j <= endX; j++) {
+        uint64_t sum = 0;
+        for (uint64_t i = startY; i <= endY; i++) {
+            for (uint64_t j = startX; j <= endX; j++) {
                 sum += reduced_image[i * reduced_width + j];
             }
         }
 
-        u_int64_t num_pixels = (endX - startX + 1) * (endY - startY + 1);
+        uint64_t num_pixels = (endX - startX + 1) * (endY - startY + 1);
         T localMean = (num_pixels > 0) ? (sum / num_pixels) : 0;
         T pixel = image[y * width + x];
 
         output[y * width + x] = (pixel > (localMean + offset)) ? pixel / 256 : 0;
     }
 }
-
-#endif //CUDA_DEVICE_THRESHOLDING_H

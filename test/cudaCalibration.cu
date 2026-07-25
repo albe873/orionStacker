@@ -1,13 +1,11 @@
-#include "fits_helper.h"
-#include "cuda_helper.h"
-#include "common.h"
+#include "fits_helper.hh"
+#include "cuda_helper.hh"
+#include "common.hh"
 
-#include "calibration.h"
+#include "calibration.hh"
 
 #include <stdio.h>
-#include <dirent.h>
 #include <string.h>
-#include <ctime>
 #include <getopt.h>
 #include <algorithm>
 
@@ -23,6 +21,9 @@ eseguire con:
 int main(int argc, char **argv) {
     const char *in_dir = NULL, *bias_dir = NULL, *dark_dir = NULL, *flat_dir = NULL;
     const char *out_dir = ".";
+
+    // Persistent strings to hold dynamically constructed paths
+    std::string base_dir_str, bias_dir_str, dark_dir_str, flat_dir_str, in_dir_str;
 
     int opt, option_index = 0;
     static struct option long_options[] = {
@@ -40,11 +41,15 @@ int main(int argc, char **argv) {
             case 'B': {
                 // If base directory is provided, append subdirectories for bias, dark, flat, and light
                 remove_trailing_slash(optarg);
-                std::string base_dir = optarg;
-                bias_dir = (base_dir + "/bias").c_str();
-                dark_dir = (base_dir + "/dark").c_str();
-                flat_dir = (base_dir + "/flat").c_str();
-                in_dir = (base_dir + "/light").c_str();
+                base_dir_str = optarg;
+                bias_dir_str = base_dir_str + "/bias";
+                dark_dir_str = base_dir_str + "/dark";
+                flat_dir_str = base_dir_str + "/flat";
+                in_dir_str = base_dir_str + "/light";
+                bias_dir = bias_dir_str.c_str();
+                dark_dir = dark_dir_str.c_str();
+                flat_dir = flat_dir_str.c_str();
+                in_dir = in_dir_str.c_str();
                 break;
             }
             case 'b': bias_dir = optarg; remove_trailing_slash((char *)bias_dir); break;
@@ -84,11 +89,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    u_int64_t bias_pixels = bias_width*bias_height;
+    uint64_t bias_pixels = bias_width*bias_height;
 
     // Alloca memoria bias
-    u_int16_t *bias_all = nullptr;
-    CHECK(cudaMallocManaged(&bias_all, bias_pixels*bias_count*sizeof(u_int16_t)));
+    uint16_t *bias_all = nullptr;
+    CHECK(cudaMallocManaged(&bias_all, bias_pixels*bias_count*sizeof(uint16_t)));
 
     // Rileggi le immagini bias e copia in memoria chiamando funzione esterna
     if (load_images_to_memory_prefetch(bias_dir, bias_all, bias_width, bias_height, bias_n_chan, bias_count, dev) != 0) {
@@ -97,13 +102,13 @@ int main(int argc, char **argv) {
     }
 
     // Alloca memoria per master bias finale (1 immagine)
-    u_int16_t *master_bias = nullptr;
-    CHECK(cudaMallocManaged(&master_bias, bias_pixels*sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(master_bias, bias_pixels*sizeof(u_int16_t), devLoc, 0));
+    float *master_bias = nullptr;
+    CHECK(cudaMallocManaged(&master_bias, bias_pixels*sizeof(float)));
+    CHECK(cudaMemPrefetchAsync(master_bias, bias_pixels*sizeof(float), devLoc, 0));
 
     // Calcola master bias
     double t_start = cpuSecond();
-    masterBias(bias_all, master_bias, bias_width, bias_height, bias_count);
+    masterBias_gpu(bias_all, master_bias, bias_width, bias_height, bias_count);
     double time_master_bias_gpu = cpuSecond()-t_start;
     printf("  GPU master bias time: %f s\n", time_master_bias_gpu);
 
@@ -116,11 +121,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    u_int64_t dark_pixels = dark_width*dark_height;
+    uint64_t dark_pixels = dark_width*dark_height;
 
     // Alloca memoria per dark
-    u_int16_t *dark_all = nullptr;
-    CHECK(cudaMallocManaged(&dark_all, dark_pixels*dark_count*sizeof(u_int16_t)));
+    uint16_t *dark_all = nullptr;
+    CHECK(cudaMallocManaged(&dark_all, dark_pixels*dark_count*sizeof(uint16_t)));
 
     // Rileggi le immagini dark e copia in memoria chiamando funzione esterna
     if (load_images_to_memory_prefetch(dark_dir, dark_all, dark_width, dark_height, dark_n_chan, dark_count, dev) != 0) {
@@ -129,13 +134,13 @@ int main(int argc, char **argv) {
     }
 
     // Alloca memoria per master dark finale (1 immagine)
-    u_int16_t *master_dark = nullptr;
-    CHECK(cudaMallocManaged(&master_dark, dark_pixels*sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(master_dark, dark_pixels*sizeof(u_int16_t), devLoc, 0));
+    float *master_dark = nullptr;
+    CHECK(cudaMallocManaged(&master_dark, dark_pixels*sizeof(float)));
+    CHECK(cudaMemPrefetchAsync(master_dark, dark_pixels*sizeof(float), devLoc, 0));
 
     //calcola master dark
     t_start = cpuSecond();
-    masterDark(dark_all, master_bias, master_dark, dark_width, dark_height, dark_count);
+    masterDark_gpu(dark_all, master_bias, master_dark, dark_width, dark_height, dark_count);
     double time_master_dark_gpu = cpuSecond()-t_start;
     printf("  GPU master dark time: %f s\n", time_master_dark_gpu);
 
@@ -148,11 +153,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    u_int64_t flat_pixels = flat_width*flat_height;
+    uint64_t flat_pixels = flat_width*flat_height;
 
     // Alloca memoria per flat
-    u_int16_t *flat_all = nullptr;
-    CHECK(cudaMallocManaged(&flat_all, flat_pixels*flat_count*sizeof(u_int16_t)));
+    uint16_t *flat_all = nullptr;
+    CHECK(cudaMallocManaged(&flat_all, flat_pixels*flat_count*sizeof(uint16_t)));
 
     // Rileggi le immagini flat e copia in memoria chiamando funzione esterna
     if (load_images_to_memory_prefetch(flat_dir, flat_all, flat_width, flat_height, flat_n_chan, flat_count, dev) != 0) {
@@ -161,13 +166,13 @@ int main(int argc, char **argv) {
     }
 
     // Alloca memoria per master flat finale (1 immagine)
-    u_int16_t *master_flat = nullptr;
-    CHECK(cudaMallocManaged(&master_flat, flat_pixels*sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(master_flat, flat_pixels*sizeof(u_int16_t), devLoc, 0));
+    float *master_flat = nullptr;
+    CHECK(cudaMallocManaged(&master_flat, flat_pixels*sizeof(float)));
+    CHECK(cudaMemPrefetchAsync(master_flat, flat_pixels*sizeof(float), devLoc, 0));
 
     //calcola master flat
     t_start = cpuSecond();
-    masterFlat(flat_all, master_bias, master_flat, flat_width, flat_height, flat_count);
+    masterFlat_gpu(flat_all, master_bias, master_flat, flat_width, flat_height, flat_count);
     double time_master_flat_gpu = cpuSecond()-t_start;
     printf("  GPU master flat time: %f s\n", time_master_flat_gpu);
 
@@ -180,11 +185,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    u_int64_t light_pixels = light_width*light_height;
+    uint64_t light_pixels = light_width*light_height;
 
     // Alloca memoria per light
-    u_int16_t *light_all = nullptr;
-    CHECK(cudaMallocManaged(&light_all, light_pixels*light_count*sizeof(u_int16_t)));
+    uint16_t *light_all = nullptr;
+    CHECK(cudaMallocManaged(&light_all, light_pixels*light_count*sizeof(uint16_t)));
 
     // Rileggi le immagini light e copia in memoria chiamando funzione esterna
     if (load_images_to_memory_prefetch(in_dir, light_all, light_width, light_height, light_n_chan, light_count, dev) != 0) {
@@ -193,13 +198,13 @@ int main(int argc, char **argv) {
     }
 
     // Alloca memoria per immagini calibrate finali (light_count immagini)
-    u_int16_t *calib_all = nullptr;
-    CHECK(cudaMallocManaged(&calib_all, light_pixels*light_count*sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(calib_all, light_pixels*light_count*sizeof(u_int16_t), devLoc, 0));
+    uint16_t *calib_all = nullptr;
+    CHECK(cudaMallocManaged(&calib_all, light_pixels*light_count*sizeof(uint16_t)));
+    CHECK(cudaMemPrefetchAsync(calib_all, light_pixels*light_count*sizeof(uint16_t), devLoc, 0));
 
     //calibra immagini light
     t_start = cpuSecond();
-    calibrateLights(light_all, master_bias, master_dark, master_flat, calib_all, light_width, light_height, light_count);
+    calibrateLights_gpu(light_all, master_bias, master_dark, master_flat, calib_all, light_width, light_height, light_count);
     double time_calibrate_lights_gpu = cpuSecond()-t_start;
     printf("  GPU calibrate lights time: %f s\n", time_calibrate_lights_gpu);
 
@@ -211,10 +216,10 @@ int main(int argc, char **argv) {
     printf("Calibration in CPU\n\n");
 
     // Prefetch bias_all, dark_all, flat_all, light_all to CPU
-    CHECK(cudaMemPrefetchAsync(bias_all, bias_pixels*bias_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
-    CHECK(cudaMemPrefetchAsync(dark_all, dark_pixels*dark_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
-    CHECK(cudaMemPrefetchAsync(flat_all, flat_pixels*flat_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
-    CHECK(cudaMemPrefetchAsync(light_all, light_pixels*light_count*sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(bias_all, bias_pixels*bias_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(dark_all, dark_pixels*dark_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(flat_all, flat_pixels*flat_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(light_all, light_pixels*light_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
     // Wait for prefetch to complete before accessing memory
     CHECK(cudaDeviceSynchronize());
 
@@ -223,7 +228,7 @@ int main(int argc, char **argv) {
     // Alloca memoria bias
 
     // Alloca memoria per master bias finale (1 immagine)
-    u_int16_t *master_bias_cpu = (u_int16_t *)malloc(bias_pixels*sizeof(u_int16_t));
+    float *master_bias_cpu = (float*)malloc(bias_pixels*sizeof(float));
     if (!master_bias_cpu) {
         fprintf(stderr, "Error allocating memory for master bias CPU\n");
         return 1;
@@ -239,7 +244,7 @@ int main(int argc, char **argv) {
     /************************************************** 2) MASTER DARK **************************************************/
 
     // Alloca memoria per master dark finale (1 immagine)
-    u_int16_t *master_dark_cpu = (u_int16_t *)malloc(dark_pixels*sizeof(u_int16_t));
+    float *master_dark_cpu = (float*)malloc(dark_pixels*sizeof(float));
     if (!master_dark_cpu) {
         fprintf(stderr, "Error allocating memory for master dark CPU\n");
         return 1;
@@ -255,7 +260,7 @@ int main(int argc, char **argv) {
     /************************************************** 3) MASTER FLAT **************************************************/
 
     // Alloca memoria per master flat finale (1 immagine)
-    u_int16_t *master_flat_cpu = (u_int16_t *)malloc(flat_pixels*sizeof(u_int16_t));
+    float *master_flat_cpu = (float*)malloc(flat_pixels*sizeof(float));
     if (!master_flat_cpu) {
         fprintf(stderr, "Error allocating memory for master flat CPU\n");
         return 1;
@@ -271,7 +276,7 @@ int main(int argc, char **argv) {
     /************************************************** 4) CALIBRATED LIGHT **************************************************/
 
     // Alloca memoria per immagini calibrate finali (light_count immagini)
-    u_int16_t *calib_all_cpu = (u_int16_t *)malloc(light_pixels*light_count*sizeof(u_int16_t));
+    uint16_t *calib_all_cpu = (uint16_t *)malloc(light_pixels*light_count*sizeof(uint16_t));
     if (!calib_all_cpu) {
         fprintf(stderr, "Error allocating memory for calibrated images CPU\n");
         return 1;

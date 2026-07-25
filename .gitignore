@@ -21,3 +21,8 @@ CPUStarFinder
 /results
 /build
 *.png
+
+# OpenCV submodule build artifacts
+/third_party/opencv_build/
+/third_party/opencv_install/
+/third_party/ade

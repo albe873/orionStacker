@@ -1,14 +1,12 @@
-#include "fits_helper.h"
-#include "common.h"
+#include "fits_helper.hh"
+#include "common.hh"
 
-#include "calibration.h"
-#include "debayer.h"
-#include "star_finder.h"
-#include "stacker.h"
+#include "calibration.hh"
+#include "debayer.hh"
+#include "star_finder.hh"
+#include "stacker.hh"
 
 #include <getopt.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <string>
 #include <cstring>
@@ -71,7 +69,7 @@ int main(int argc, char** argv) {
     
     long bias_width=0, bias_height=0, bias_n_chan=0, npixels=0;
     int bias_count=0;
-    u_int16_t *master_bias = nullptr;
+    float *master_bias = nullptr;
 
     // First, check if there's already a master_bias in the output directory
     std::string master_bias_file;
@@ -85,7 +83,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         npixels = bias_width * bias_height;
-        master_bias = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        master_bias = (float*)malloc(npixels * sizeof(float));
         get_fits_data(fpbias, npixels, master_bias);
     }
     // If no existing master, check if bias_path is a file (direct master bias)
@@ -98,7 +96,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         npixels = bias_width * bias_height;
-        master_bias = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        master_bias = (float*)malloc(npixels * sizeof(float));
         get_fits_data(fpbias, npixels, master_bias);  // automatically close the fits file
     }
     // Otherwise, compute from bias directory
@@ -111,7 +109,7 @@ int main(int argc, char** argv) {
         npixels = bias_width * bias_height;
 
         // bias images memory allocation
-        u_int16_t *bias_all = (u_int16_t*)malloc(npixels * bias_count * sizeof(u_int16_t));
+        uint16_t *bias_all = (uint16_t*)malloc(npixels * bias_count * sizeof(uint16_t));
 
         // read all bias images
         if (load_images_to_memory(bias_path, bias_all, bias_width, bias_height, bias_n_chan, bias_count) != 0) {
@@ -120,7 +118,7 @@ int main(int argc, char** argv) {
         }
 
         // master bias memory allocation
-        master_bias = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        master_bias = (float*)malloc(npixels * sizeof(float));
 
         // master bias computation
         masterBias_cpu(bias_all, master_bias, bias_width, bias_height, bias_count);
@@ -139,7 +137,7 @@ int main(int argc, char** argv) {
 
     long dark_width=0, dark_height=0, dark_n_chan=0;
     int dark_count=0;
-    u_int16_t *master_dark = nullptr;
+    float *master_dark = nullptr;
 
     // check if there's already a master_dark in the output directory
     std::string master_dark_file;
@@ -152,7 +150,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Invalid master dark dimensions - they need to be the same as master bias!\n");
             return 1;
         }
-        master_dark = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        master_dark = (float*)malloc(npixels * sizeof(float));
         get_fits_data(fpdark, npixels, master_dark);
     }
     // If no existing master, check if dark_path is a file (direct master dark)
@@ -164,7 +162,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Invalid master dark dimensions - they need to be the same as master bias!\n");
             return 1;
         }
-        master_dark = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        master_dark = (float*)malloc(npixels * sizeof(float));
         get_fits_data(fpdark, npixels, master_dark);
     }
     // Otherwise, compute from dark directory
@@ -179,7 +177,7 @@ int main(int argc, char** argv) {
         }
 
         // dark images memory allocation
-        u_int16_t *dark_all = (u_int16_t*)malloc(npixels * dark_count * sizeof(u_int16_t));
+        uint16_t *dark_all = (uint16_t*)malloc(npixels * dark_count * sizeof(uint16_t));
 
         // read all dark images
         if (load_images_to_memory(dark_path, dark_all, dark_width, dark_height, dark_n_chan, dark_count) != 0) {
@@ -188,7 +186,7 @@ int main(int argc, char** argv) {
         }
 
         // master dark memory allocation
-        master_dark = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        master_dark = (float*)malloc(npixels * sizeof(float));
 
         // master dark computation
         masterDark_cpu(dark_all, master_bias, master_dark, dark_width, dark_height, dark_count);
@@ -208,7 +206,7 @@ int main(int argc, char** argv) {
 
     long flat_width=0, flat_height=0, flat_n_chan=0;
     int flat_count=0;
-    u_int16_t *master_flat = nullptr;
+    float *master_flat = nullptr;
 
     // First, check if there's already a master_flat in the output directory
     std::string master_flat_file;
@@ -221,7 +219,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Invalid master flat dimensions - they need to be the same as master bias!\n");
             return 1;
         }
-        master_flat = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        master_flat = (float*)malloc(npixels * sizeof(float));
         get_fits_data(fpflat, npixels, master_flat);
     }
     // If no existing master, check if flat_path is a file (direct master flat)
@@ -233,7 +231,7 @@ int main(int argc, char** argv) {
             fprintf(stderr, "Invalid master flat dimensions - they need to be the same as master bias!\n");
             return 1;
         }
-        master_flat = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        master_flat = (float*)malloc(npixels * sizeof(float));
         get_fits_data(fpflat, npixels, master_flat);
     }
     // Otherwise, compute from flat directory
@@ -248,7 +246,7 @@ int main(int argc, char** argv) {
         }
 
         // flat images memory allocation
-        u_int16_t *flat_all = (u_int16_t*)malloc(npixels * flat_count * sizeof(u_int16_t));
+        uint16_t *flat_all = (uint16_t*)malloc(npixels * flat_count * sizeof(uint16_t));
 
         // read all flat images
         if (load_images_to_memory(flat_path, flat_all, flat_width, flat_height, flat_n_chan, flat_count) != 0) {
@@ -257,7 +255,7 @@ int main(int argc, char** argv) {
         }
 
         // master flat memory allocation
-        master_flat = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
+        master_flat = (float*)malloc(npixels * sizeof(float));
 
         // master flat computation
         masterFlat_cpu(flat_all, master_bias, master_flat, flat_width, flat_height, flat_count);
@@ -288,10 +286,10 @@ int main(int argc, char** argv) {
     }
 
     // memory allocation for images
-    u_int16_t *light_all = (u_int16_t*)malloc(npixels * light_count * sizeof(u_int16_t));
-    u_int16_t *calibrated_all = (u_int16_t*)malloc(npixels * light_count * sizeof(u_int16_t));
+    uint16_t *light_all = (uint16_t*)malloc(npixels * light_count * sizeof(uint16_t));
+    uint16_t *calibrated_all = (uint16_t*)malloc(npixels * light_count * sizeof(uint16_t));
     
-    printf("memory allocation done, used %f Mb\n", 2*npixels*light_count*sizeof(u_int16_t) / 1e6);
+    printf("memory allocation done, used %f Mb\n", 2*npixels*light_count*sizeof(uint16_t) / 1e6);
 
     // memory allocation for timestamps of images
     double *timestamps = new double[light_count];
@@ -319,12 +317,12 @@ int main(int argc, char** argv) {
     // ==================================================================
     // 3. Debayering
 
-    u_int16_t *debayered_all = nullptr, *aligned_all = nullptr;
-    u_int16_t *mem_block = (u_int16_t*)malloc(npixels*3*(light_count+1)*sizeof(u_int16_t));
+    uint16_t *debayered_all = nullptr, *aligned_all = nullptr;
+    uint16_t *mem_block = (uint16_t*)malloc(npixels*3*(light_count+1)*sizeof(uint16_t));
     debayered_all = mem_block + npixels*3;
     aligned_all   = mem_block;
     
-    demosaic_bilinear_rggb_cpu(calibrated_all, debayered_all, light_width, light_height, light_count);
+    demosaic_mhc_rggb_cpu(calibrated_all, debayered_all, light_width, light_height, light_count);
     printf("debayering done\n");
 
     // free calibrated_all memory
@@ -335,27 +333,27 @@ int main(int argc, char** argv) {
 
 
     // ===== 4.1 allocate memory =====
-    u_int16_t *gray_img = (u_int16_t*)malloc(npixels * sizeof(u_int16_t));
-    u_int8_t *threshold_img = (u_int8_t*)malloc(npixels * sizeof(u_int8_t));
+    uint16_t *gray_img = (uint16_t*)malloc(npixels * sizeof(uint16_t));
+    uint8_t *threshold_img = (uint8_t*)malloc(npixels * sizeof(uint8_t));
     star *stars = (star*)malloc(1024 * sizeof(star));               // TODO: parametrize max starts
-    u_int32_t *num_stars = (u_int32_t*)malloc(sizeof(u_int32_t));
+    uint32_t *num_stars = (uint32_t*)malloc(sizeof(uint32_t));
 
     const int MAX_STARS_TO_DETECT = 500;  // Limit stars for better matching
 
     
 
     // ===== 4.2 grayscale =====
-    u_int16_t *central_image = debayered_all + (central_image_index * npixels * 3);
-    to_grayscale_planar(central_image, gray_img, npixels);
+    uint16_t *central_image = debayered_all + (central_image_index * npixels * 3);
+    to_grayscale_planar_cpu(central_image, gray_img, npixels);
 
     // ===== 4.3 thresholding =====
     threshold_params t_par;
         t_par.window_size = 201;    
         t_par.threshold_scale = 0.7F;
-    compute_threshold(gray_img, threshold_img, light_width, light_height, t_par);
+    compute_threshold_cpu(gray_img, threshold_img, light_width, light_height, t_par);
 
     // ===== 4.4 detect stars =====
-    detect_stars(threshold_img, light_width, light_height, 100, 10, stars, *num_stars, MAX_STARS_TO_DETECT);
+    detect_stars_cpu(threshold_img, light_width, light_height, 100, 10, stars, *num_stars, MAX_STARS_TO_DETECT);
 
     // ===== 4.5 populate star details =====
     star_detail *stars_details = new star_detail[*num_stars];
@@ -381,12 +379,12 @@ int main(int argc, char** argv) {
     // ===== 4.7 for every image =====
     int index = 0;
     for (int i = 0; i < light_count; i++) {
-        u_int16_t *current_img = debayered_all  + (i     * npixels * 3);
-        u_int16_t *dest        = aligned_all    + (index * npixels * 3);
+        uint16_t *current_img = debayered_all  + (i     * npixels * 3);
+        uint16_t *dest        = aligned_all    + (index * npixels * 3);
 
         if (i == central_image_index) {
             // Direct copy of central image (no warp)
-            memcpy(dest, current_img, npixels * 3 * sizeof(u_int16_t));
+            memcpy(dest, current_img, npixels * 3 * sizeof(uint16_t));
             char aligned_name[64];
             snprintf(aligned_name, sizeof(aligned_name), "aligned_%04d", i);
             //save_image_fits(aligned_dir, aligned_name, dest, light_width, light_height, 3);
@@ -394,10 +392,10 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        to_grayscale_planar(current_img, gray_img, npixels);
-        compute_threshold(gray_img, threshold_img, light_width, light_height, t_par);
+        to_grayscale_planar_cpu(current_img, gray_img, npixels);
+        compute_threshold_cpu(gray_img, threshold_img, light_width, light_height, t_par);
 
-        detect_stars(threshold_img, light_width, light_height, 100, 10, stars, *num_stars, MAX_STARS_TO_DETECT);
+        detect_stars_cpu(threshold_img, light_width, light_height, 100, 10, stars, *num_stars, MAX_STARS_TO_DETECT);
 
         star_detail *cur_stars_details = new star_detail[*num_stars];
         populate_star_details(cur_stars_details, stars, *num_stars, current_img, gray_img, light_width, npixels);
@@ -441,12 +439,12 @@ int main(int argc, char** argv) {
     // 5. stacking
     
     // ===== 5.1 stacked image memory allocation =====
-    u_int16_t *stacked_img = (u_int16_t*)malloc(npixels * 3 * sizeof(u_int16_t));
+    uint16_t *stacked_img = (uint16_t*)malloc(npixels * 3 * sizeof(uint16_t));
 
     // ===== 5.2 stacking =====
-    float kappa = 3.0f;
-    u_int16_t sigma = 5;
-    alfa_sigma_cpu(aligned_all, stacked_img, (u_int16_t)aligned_count, npixels*3, kappa, sigma);
+    float k_low = 3.0f;
+    float k_high = 2.0f;
+    winsorized_sigma_clipping_cpu(aligned_all, stacked_img, (uint16_t)aligned_count, npixels*3, k_low, k_high);
 
     // ===== 5.3 saving result =====
     save_image_fits(out_path, "stacked", stacked_img, light_width, light_height, 3);

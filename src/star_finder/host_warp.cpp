@@ -1,13 +1,13 @@
-#include "star_finder.h"
+#include "star_finder.hh"
 
 #include "opencv2/imgproc.hpp"
 
-void warp_affine_planar_cpu(const u_int16_t *source, u_int16_t *dest,
-                            const cv::Mat &affine_2x3, long width, long height) {
-    long npixels = width * height;
-    cv::Mat src_r(height, width, CV_16UC1, const_cast<u_int16_t*>(source));
-    cv::Mat src_g(height, width, CV_16UC1, const_cast<u_int16_t*>(source + npixels));
-    cv::Mat src_b(height, width, CV_16UC1, const_cast<u_int16_t*>(source + 2*npixels));
+void warp_affine_planar_cpu(const uint16_t *source, uint16_t *dest,
+                            const cv::Mat &affine_2x3, int64_t width, int64_t height) {
+    int64_t npixels = width * height;
+    cv::Mat src_r(height, width, CV_16UC1, const_cast<uint16_t*>(source));
+    cv::Mat src_g(height, width, CV_16UC1, const_cast<uint16_t*>(source + npixels));
+    cv::Mat src_b(height, width, CV_16UC1, const_cast<uint16_t*>(source + 2*npixels));
 
     cv::Mat dst_r(height, width, CV_16UC1, dest);
     cv::Mat dst_g(height, width, CV_16UC1, dest + npixels);

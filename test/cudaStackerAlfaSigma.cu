@@ -1,14 +1,12 @@
-#include "fits_helper.h"
-#include "cuda_helper.h"
-#include "common.h"
+#include "fits_helper.hh"
+#include "cuda_helper.hh"
+#include "common.hh"
 
-#include "stacker.h"
+#include "stacker.hh"
 
 #include <stdio.h>
 #include <string.h>
-#include <ctime>
 #include <getopt.h>
-#include <cstdlib>
 #include <cstring>
 
 int main(int argc, char **argv) {
@@ -20,15 +18,15 @@ int main(int argc, char **argv) {
     const char *file_name = "image";
 
     float kappa = 3.0f;
-    u_int16_t sigma = 5;
+    uint16_t iterations = 5;
 
     int opt, option_index = 0;
     static struct option long_options[] = {
-        {"input-directory", required_argument, 0, 'i'},
+        {"input-directory",  required_argument, 0, 'i'},
         {"output-directory", optional_argument, 0, 'o'},
-        {"file-name",       optional_argument, 0, 'n'},
-        {"kappa",           optional_argument, 0, 'k'},
-        {"sigma",           optional_argument, 0, 's'},
+        {"file-name",        optional_argument, 0, 'n'},
+        {"kappa",            optional_argument, 0, 'k'},
+        {"iterations",           optional_argument, 0, 't'},
         {0, 0, 0, 0}
     };
 
@@ -44,16 +42,16 @@ int main(int argc, char **argv) {
                 else fprintf(stderr, "Invalid kappa, using default %.1f\n", kappa);
                 break;
             }
-            case 's': {
+            case 't': {
                 char *end;
                 long v = strtol(optarg, &end, 10);
-                if (end != optarg && v >= 0 && v <= 65535) sigma = (u_int16_t)v;
-                else fprintf(stderr, "Invalid sigma, using default %d\n", sigma);
+                if (end != optarg && v >= 0 && v <= 65535) iterations = (u_int16_t)v;
+                else fprintf(stderr, "Invalid iterations, using default %d\n", iterations);
                 break;
             }
             default:
                 fprintf(stderr, "Usage: %s --input-directory <dir> [--output-directory <dir>] "
-                                "[--file-name <name>] [--kappa <f>] [--sigma <n>]\n", argv[0]);
+                                "[--file-name <name>] [--kappa <f>] [--iterations <n>]\n", argv[0]);
                 return 1;
         }
     }
@@ -86,7 +84,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    u_int64_t npixels = (u_int64_t)width * height * n_chan;
+    uint64_t npixels = (uint64_t)width * height * n_chan;
 
     if (image_count == 0) {
         fprintf(stderr, "No valid FITS images found in %s\n", in_dir);
@@ -100,8 +98,8 @@ int main(int argc, char **argv) {
     printf("  Images of size %ldx%ld, %ld channel(s)\n", width, height, n_chan);
 
     // Allocazione memoria GPU
-    u_int16_t *img_all = nullptr;
-    CHECK(cudaMallocManaged(&img_all, (size_t)npixels * image_count * sizeof(u_int16_t)));
+    uint16_t *img_all = nullptr;
+    CHECK(cudaMallocManaged(&img_all, (size_t)npixels * image_count * sizeof(uint16_t)));
 
     // Carica le immagini in memoria
     printf("  Loading images ...\n");
@@ -112,9 +110,9 @@ int main(int argc, char **argv) {
     printf("  Loaded %d images\n", image_count);
 
     // Alloca memoria per il risultato GPU
-    u_int16_t *mean_gpu = nullptr;
-    CHECK(cudaMallocManaged(&mean_gpu, (size_t)npixels * sizeof(u_int16_t)));
-    CHECK(cudaMemAdvise(mean_gpu, (size_t)npixels * sizeof(u_int16_t), cudaMemAdviseSetPreferredLocation, devLoc));
+    uint16_t *mean_gpu = nullptr;
+    CHECK(cudaMallocManaged(&mean_gpu, (size_t)npixels * sizeof(uint16_t)));
+    CHECK(cudaMemAdvise(mean_gpu, (size_t)npixels * sizeof(uint16_t), cudaMemAdviseSetPreferredLocation, devLoc));
 
     // ==================================================
     // GPU Alfa Sigma
@@ -122,7 +120,7 @@ int main(int argc, char **argv) {
     printf("GPU\n");
 
     double t_start = cpuSecond();
-    alfa_sigma(img_all, mean_gpu, (u_int16_t)image_count, npixels, kappa, sigma);
+    winsorized_sigma_clipping_gpu(img_all, mean_gpu, (uint16_t)image_count, npixels, kappa);
     double time_gpu = cpuSecond() - t_start;
     printf("  Alfa Sigma elapsed time: %f s\n", time_gpu);
 
@@ -140,7 +138,7 @@ int main(int argc, char **argv) {
     printf("CPU\n");
 
     // Alloca buffer flat per CPU e rilegge le immagini dal disco
-    u_int16_t *img_all_cpu = (u_int16_t *)malloc((size_t)npixels * image_count * sizeof(u_int16_t));
+    uint16_t *img_all_cpu = (uint16_t *)malloc((size_t)npixels * image_count * sizeof(uint16_t));
     if (!img_all_cpu) {
         fprintf(stderr, "Failed to allocate CPU memory\n");
         return 1;
@@ -152,7 +150,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    u_int16_t *mean_cpu = (u_int16_t *)malloc((size_t)npixels * sizeof(u_int16_t));
+    uint16_t *mean_cpu = (uint16_t *)malloc((size_t)npixels * sizeof(uint16_t));
     if (!mean_cpu) {
         fprintf(stderr, "Failed to allocate CPU result memory\n");
         free(img_all_cpu); free(mean_cpu);
@@ -160,7 +158,7 @@ int main(int argc, char **argv) {
     }
 
     t_start = cpuSecond();
-    alfa_sigma_cpu(img_all_cpu, mean_cpu, image_count, (int)npixels, kappa, sigma);
+    winsorized_sigma_clipping_cpu(img_all_cpu, mean_cpu, image_count, (int)npixels, kappa);
     double time_cpu = cpuSecond() - t_start;
     printf("  CPU Alfa Sigma elapsed time: %f s\n", time_cpu);
 
@@ -170,7 +168,7 @@ int main(int argc, char **argv) {
     printf("Comparing results\n");
 
     long errors = 0;
-    for (u_int64_t i = 0; i < npixels; i++) {
+    for (uint64_t i = 0; i < npixels; i++) {
         if (mean_gpu[i] != mean_cpu[i])
             errors++;
     }
@@ -182,7 +180,7 @@ int main(int argc, char **argv) {
                errors, (unsigned long)npixels, 100.0 * errors / npixels);
         // Mostra alcuni dettagli
         long shown = 0;
-        for (u_int64_t i = 0; i < npixels && shown < 10; i++) {
+        for (uint64_t i = 0; i < npixels && shown < 10; i++) {
             if (mean_gpu[i] != mean_cpu[i]) {
                 printf("    pixel[%lu]: GPU=%u  CPU=%u\n",
                        (unsigned long)i, (unsigned)mean_gpu[i], (unsigned)mean_cpu[i]);

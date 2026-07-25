@@ -1,15 +1,11 @@
-#ifndef CPU_STARFINDER
-#define CPU_STARFINDER
+#include "star_finder.hh"
+#include "host_otsu_centralized.cpp"
 
-#include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "star_finder.h"
-#include "host_otsu_centralized.cpp"
-
-void to_grayscale_planar(const uint16_t* __restrict__ image, uint16_t* __restrict__ gray_image, uint64_t npixels) {
+void to_grayscale_planar_cpu(const uint16_t* __restrict__ image, uint16_t* __restrict__ gray_image, uint64_t npixels) {
     #pragma omp parallel for
     for(uint64_t i = 0; i < npixels; i++) {
         uint16_t red = image[i];
@@ -101,13 +97,13 @@ void adaptive_threshold_approximate(const uint16_t* __restrict__ image, uint8_t*
     }
 }
 
-void draw_stars(u_int16_t* __restrict__ img, u_int64_t width, const star *stars, u_int32_t n_stars) {
+void draw_stars(u_int16_t* __restrict__ img, uint64_t width, const star *stars, uint32_t n_stars) {
     for(uint32_t i = 0; i < n_stars; i++) {
         star s = stars[i];
 
         // ciclo sui lati orizzontali
-        u_int64_t idx1 = s.start_y * width + s.start_x;
-        u_int64_t idx2 = (s.start_y + s.size_y) * width + s.start_x;
+        uint64_t idx1 = s.start_y * width + s.start_x;
+        uint64_t idx2 = (s.start_y + s.size_y) * width + s.start_x;
         for (int i = 0; i < s.size_x; i++) {
             img[idx1] = 65535;
             img[idx2] = 65535;
@@ -147,10 +143,10 @@ inline void change_direction(int8_t &dir, int8_t &dir_x_or_y) {
         dir = 0;
 }
 
-inline void write_star(star *stars, u_int32_t &num_stars, u_int32_t max_stars, 
+inline void write_star(star *stars, uint32_t &num_stars, uint32_t max_stars, 
                                   uint64_t start_x, uint64_t start_y,
                                   uint32_t size_x,  uint32_t size_y) {
-    u_int32_t idx = num_stars;
+    uint32_t idx = num_stars;
     num_stars++;
     if (idx < max_stars) {
         stars[idx].start_x = start_x;
@@ -160,9 +156,9 @@ inline void write_star(star *stars, u_int32_t &num_stars, u_int32_t max_stars,
     }
 }
 
-void detect_stars(const uint8_t* __restrict__ input, uint64_t width, uint64_t height, 
-                  uint16_t max_star_size, uint16_t min_star_size,
-                  star *stars, uint32_t &num_stars, uint32_t max_stars) {
+void detect_stars_cpu(const uint8_t* __restrict__ input, uint64_t width, uint64_t height, 
+                      uint16_t max_star_size, uint16_t min_star_size,
+                      star *stars, uint32_t &num_stars, uint32_t max_stars) {
     num_stars = 0;
     const int8_t directions[4][2] = {{1,0},{0,1},{-1,0},{0,-1}};  // variazione x e y per ogni direzione
 
@@ -185,7 +181,7 @@ void detect_stars(const uint8_t* __restrict__ input, uint64_t width, uint64_t he
             int8_t    dir = 0;                                    // direzione corrente
             int8_t    dir_x_or_y = 0;                             // = 0 se x, = 1 se y, per comodità
 
-            u_int64_t current_idx;                                // indice del pixel corrente
+            uint64_t current_idx;                                 // indice del pixel corrente
 
             // Use local variables for star detection to avoid modifying loop variables
             uint64_t cur_x = x;
@@ -291,14 +287,13 @@ void detect_stars(const uint8_t* __restrict__ input, uint64_t width, uint64_t he
 }
 
 
-void compute_threshold( const u_int16_t* __restrict__ img, u_int8_t* __restrict__ out_img,
-                        u_int64_t width, u_int64_t height, 
-                        threshold_params params) {
-    u_int64_t npixels = width * height;
+void compute_threshold_cpu(const uint16_t* __restrict__ img, uint8_t* __restrict__ out_img,
+                           uint64_t width, uint64_t height, threshold_params params) {
+    uint64_t npixels = width * height;
     // in case of fast adaptive thresholding, allocate reduced image
-    u_int16_t *reduced_image = nullptr;
+    uint16_t *reduced_image = nullptr;
     if (params.type == TR_FAST_ADAPTIVE) {
-        reduced_image = (u_int16_t *)malloc((npixels / params.reduce_factor / params.reduce_factor) * sizeof(u_int16_t));
+        reduced_image = (uint16_t *)malloc((npixels / params.reduce_factor / params.reduce_factor) * sizeof(uint16_t));
         if (reduced_image == nullptr) {
             fprintf(stderr, "Error allocating memory for reduced image\n");
             exit(EXIT_FAILURE);
@@ -330,7 +325,7 @@ void compute_threshold( const u_int16_t* __restrict__ img, u_int8_t* __restrict_
 }
 
 
-void sum_brightness_planar(const u_int16_t* __restrict__ input_rgb, u_int64_t input_width, u_int64_t npixels, star s, star_detail *sd) {
+void sum_brightness_planar(const uint16_t* __restrict__ input_rgb, uint64_t input_width, uint64_t npixels, star s, star_detail *sd) {
     uint64_t idx;
     for (uint64_t x = s.start_x; x < s.start_x + s.size_x; x++) {
         for (uint64_t y = s.start_y; y < s.start_y + s.size_y; y++) {
@@ -346,7 +341,7 @@ void sum_brightness_planar(const u_int16_t* __restrict__ input_rgb, u_int64_t in
 }
 
 
-void baricenter_uint16_host(const u_int16_t* __restrict__ input_grayscale, u_int64_t input_width, star s, star_detail *sd) {
+void baricenter_uint16_host(const uint16_t* __restrict__ input_grayscale, uint64_t input_width, star s, star_detail *sd) {
     uint64_t idx;
     for (uint64_t x = s.start_x; x < s.start_x + s.size_x; x++) {
         for (uint64_t y = s.start_y; y < s.start_y + s.size_y; y++) {
@@ -360,21 +355,19 @@ void baricenter_uint16_host(const u_int16_t* __restrict__ input_grayscale, u_int
 
 
 
-void populate_star_details(star_detail *stars_details, star *stars, u_int32_t n_stars, 
-                           const u_int16_t* __restrict__ img_rgb, const u_int16_t* __restrict__ img_gray,
-                           u_int64_t width, u_int64_t npixels) {
+void populate_star_details(star_detail *stars_details, star *stars, uint32_t n_stars, 
+                           const uint16_t* __restrict__ img_rgb, const uint16_t* __restrict__ img_gray,
+                           uint64_t width, uint64_t npixels) {
     // for each star, first I compute brightness then the baricenter
     // (I need the brightness sums to compute the baricenter)
     #pragma omp parallel for
-    for (u_int32_t i = 0; i < n_stars; i++) {
+    for (uint32_t i = 0; i < n_stars; i++) {
         init_star_detail(&stars_details[i]);
         sum_brightness_planar(img_rgb, width, npixels, stars[i], &stars_details[i]);
     } 
 
     #pragma omp parallel for
-    for (u_int32_t i = 0; i < n_stars; i++) {
+    for (uint32_t i = 0; i < n_stars; i++) {
         baricenter_uint16_host(img_gray, width, stars[i], &stars_details[i]);
     }
 }
-
-#endif // CPU_STARFINDER_H

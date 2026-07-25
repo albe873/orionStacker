@@ -2,7 +2,6 @@
 #define FITS_HELPER_H
 
 #include <fitsio.h>
-#include <string>
 #include "opencv2/imgcodecs.hpp"
 
 
@@ -45,7 +44,8 @@ int find_mid_image_index(const double *timestamps, int count);
 /* legge i dati dell'immagine fits
  * *** IMPORTANTE: fits_data deve essere allocato prima della chiamata ***
 */ 
-void get_fits_data(fitsfile *fptr, size_t npixels, u_int16_t *fits_data);
+void get_fits_data(fitsfile *fptr, size_t npixels, uint16_t *fits_data);
+void get_fits_data(fitsfile *fptr, size_t npixels, float* fits_data);
 
 /* controlla una directory, restituisce la dimensione della prima immagine trovata
  * e il numero di immagini della stessa dimensione
@@ -60,12 +60,12 @@ int check_directory(const char *dir_path, int *count, long *width, long *height,
  * Se timestamps != nullptr, viene popolato con i timestamp di scatto
  * (DATE-AVG o DATE-OBS) di ogni immagine caricata.
 */
-int load_images_to_memory(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count, double *timestamps = nullptr);
+int load_images_to_memory(const char *dir_path, uint16_t *img_all, long width, long height, long n_chan, int count, double *timestamps = nullptr);
 
 /* Come load_images_to_memory
  * con la possibilità di indicare un device a cui fare prefetch delle immagini
 */
-int load_images_to_memory_prefetch(const char *dir_path, u_int16_t *img_all, long width, long height, long n_chan, int count, int dev, double *timestamps = nullptr);
+int load_images_to_memory_prefetch(const char *dir_path, uint16_t *img_all, long width, long height, long n_chan, int count, int dev, double *timestamps = nullptr);
 
 
 /* stampa i metadati del file fits
@@ -75,7 +75,8 @@ void print_fits_metadata(fitsfile *fptr);
 /* salva un'immagine in formato fits
  * Nota: l'immagine deve essere in formato planare
 */
-void save_image_fits(string output_dir_path, string file_name, u_int16_t *image_data, long width, long height, long n_chan);
+void save_image_fits(string output_dir_path, string file_name, uint16_t *image_data, long width, long height, long n_chan);
+void save_image_fits(string output_dir_path, string file_name, float *image_data, long width, long height, long n_chan);
 
 /* trova il file master calibration più recente in una directory
  * cerca file con pattern master_bias_*.fits, master_dark_*.fits, master_flat_*.fits
@@ -89,5 +90,5 @@ bool find_latest_master_file(const string &dir_path, const string &master_type, 
  * in formato planare
  * uso di OpenCV per la scrittura dei dati raw
 */
-void save_image_tiff(string output_dir_path, string file_name, u_int16_t *image_data, long width, long height, long n_chan);
+void save_image_tiff(string output_dir_path, string file_name, uint16_t *image_data, long width, long height, long n_chan);
 #endif // FITS_HELPER_H

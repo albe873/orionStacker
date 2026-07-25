@@ -1,8 +1,8 @@
-#include "fits_helper.h"
-#include "cuda_helper.h"
-#include "common.h"
+#include "fits_helper.hh"
+#include "cuda_helper.hh"
+#include "common.hh"
 
-#include "star_finder.h"
+#include "star_finder.hh"
 
 #include <stdio.h>
 #include <getopt.h>
@@ -10,7 +10,6 @@
 #include <cstring>
 
 #include "opencv2/imgcodecs.hpp"
-#include <cstdlib>
 #include <algorithm>
 
 int main(int argc, char **argv) {
@@ -22,9 +21,9 @@ int main(int argc, char **argv) {
     threshold_params t_par;
         t_par.window_size = 201;
 
-    u_int16_t max_star_size = 100;
-    u_int16_t min_star_size = 4;
-    u_int16_t max_stars = 1000;
+    uint16_t max_star_size = 100;
+    uint16_t min_star_size = 4;
+    uint16_t max_stars = 1000;
 
     static struct option long_options[] = {
         {"input-file", required_argument, 0, 'f'},
@@ -148,23 +147,23 @@ int main(int argc, char **argv) {
     }
 
     // Alloca memoria per l'immagine FITS e versione grayscale
-    u_int64_t totpixels = width * height * channels;
-    u_int64_t npixels = width * height;
+    uint64_t totpixels = width * height * channels;
+    uint64_t npixels = width * height;
 
-    u_int16_t *fits_data = nullptr;
-    CHECK(cudaMallocManaged(&fits_data, totpixels * sizeof(u_int16_t)));
+    uint16_t *fits_data = nullptr;
+    CHECK(cudaMallocManaged(&fits_data, totpixels * sizeof(uint16_t)));
 
-    u_int16_t *gray_image = nullptr;
-    CHECK(cudaMallocManaged(&gray_image, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(gray_image, npixels * sizeof(u_int16_t), devLoc, 0));
+    uint16_t *gray_image = nullptr;
+    CHECK(cudaMallocManaged(&gray_image, npixels * sizeof(uint16_t)));
+    CHECK(cudaMemPrefetchAsync(gray_image, npixels * sizeof(uint16_t), devLoc, 0));
 
-    u_int8_t *threshold_image = nullptr;
-    CHECK(cudaMallocManaged(&threshold_image, npixels * sizeof(u_int8_t)));
-    CHECK(cudaMemPrefetchAsync(threshold_image, npixels * sizeof(u_int8_t), devLoc, 0));
+    uint8_t *threshold_image = nullptr;
+    CHECK(cudaMallocManaged(&threshold_image, npixels * sizeof(uint8_t)));
+    CHECK(cudaMemPrefetchAsync(threshold_image, npixels * sizeof(uint8_t), devLoc, 0));
 
     // Legge i dati dal file FITS
     get_fits_data(fptr, totpixels, fits_data);
-    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), devLoc, 0));
+    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(uint16_t), devLoc, 0));
 
     // ======================================================
     // GPU part
@@ -191,8 +190,8 @@ int main(int argc, char **argv) {
     star *d_stars = nullptr;
     CHECK(cudaMallocManaged(&d_stars, max_stars * sizeof(star)));
 
-    u_int32_t *d_num_stars = nullptr;
-    CHECK(cudaMallocManaged(&d_num_stars, sizeof(u_int32_t)));
+    uint32_t *d_num_stars = nullptr;
+    CHECK(cudaMallocManaged(&d_num_stars, sizeof(uint32_t)));
     *d_num_stars = 0;   // initialized to 0
     
     // 3.2 - Detect
@@ -216,30 +215,30 @@ int main(int argc, char **argv) {
     printf("\n======================================\n");
     printf("Running star detection on CPU\n\n");
     // allocating resources
-    u_int16_t *gray_image_cpu = new u_int16_t[npixels];
-    u_int8_t *threshold_image_cpu = new u_int8_t[npixels];
+    uint16_t *gray_image_cpu = new uint16_t[npixels];
+    uint8_t *threshold_image_cpu = new uint8_t[npixels];
 
     // prefetch fits_data to CPU
-    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(u_int16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(uint16_t), cudaCpuDeviceId, 0));
     CHECK(cudaDeviceSynchronize());
 
     // 1 - grayscale
     t_start = cpuSecond();
-    to_grayscale_planar(fits_data, gray_image_cpu, npixels);
+    to_grayscale_planar_cpu(fits_data, gray_image_cpu, npixels);
     double time_grayscale_cpu = cpuSecond() - t_start;
     printf("  Grayscale done - time: %f\n", time_grayscale_cpu);
 
     // 2 - threshold
     t_start = cpuSecond();
-    compute_threshold(gray_image_cpu, threshold_image_cpu, width, height, t_par);
+    compute_threshold_cpu(gray_image_cpu, threshold_image_cpu, width, height, t_par);
     double time_threshold_cpu = cpuSecond() - t_start;
     printf("  Threshold done - time: %f\n", time_threshold_cpu);
     
     // 3 - detection
     star *stars_cpu = new star[max_stars];
-    u_int32_t num_stars_cpu = 0;
+    uint32_t num_stars_cpu = 0;
     t_start = cpuSecond();
-    detect_stars(threshold_image_cpu, width, height, max_star_size, min_star_size, stars_cpu, num_stars_cpu, max_stars);
+    detect_stars_cpu(threshold_image_cpu, width, height, max_star_size, min_star_size, stars_cpu, num_stars_cpu, max_stars);
     double time_detect_stars_cpu = cpuSecond() - t_start;
     printf("  Star detection done - time: %f\n", time_detect_stars_cpu);
 
@@ -256,10 +255,10 @@ int main(int argc, char **argv) {
     printf("\n======================================\n");
     printf("Result comparaison\n\n");
 
-    u_int64_t matching_pixels = 0;
-    u_int64_t different_pixels = 0;
+    uint64_t matching_pixels = 0;
+    uint64_t different_pixels = 0;
     
-    for (u_int64_t i = 0; i < npixels; i++) {
+    for (uint64_t i = 0; i < npixels; i++) {
         if (threshold_image[i] == threshold_image_cpu[i]) {
             matching_pixels++;
         } else {

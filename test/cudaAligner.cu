@@ -1,23 +1,14 @@
-#include "fits_helper.h"
-#include "cuda_helper.h"
-#include "common.h"
+#include "fits_helper.hh"
+#include "cuda_helper.hh"
+#include "common.hh"
 
-#include "star_finder.h"
-#include "debayer.h"
+#include "star_finder.hh"
+#include "debayer.hh"
 
 #include <stdio.h>
 #include <getopt.h>
 #include <unistd.h>
-#include <cstring>
 #include <vector>
-#include <array>
-#include <algorithm>
-#include <limits>
-#include <cmath>
-#include <string>
-#include <cstdint>
-#include <filesystem>
-#include <utility>
 
 #include "opencv2/core.hpp"
 #include "opencv2/features2d.hpp"
@@ -28,24 +19,24 @@
 
 namespace {
 
-cv::Mat normalize_u16_to_u8(const u_int16_t *img, int width, int height) {
+cv::Mat normalize_u16_to_u8(const uint16_t *img, int width, int height) {
     cv::Mat src_u16(height, width, CV_16UC1, const_cast<u_int16_t*>(img));
     cv::Mat out_u8;
     cv::normalize(src_u16, out_u8, 0, 255, cv::NORM_MINMAX, CV_8U);
     return out_u8;
 }
 
-void print_u16_stats(const char *label, const u_int16_t *img, u_int64_t npixels) {
+void print_u16_stats(const char *label, const uint16_t *img, uint64_t npixels) {
     if (npixels == 0) {
         printf("%s: empty\n", label);
         return;
     }
 
-    u_int16_t min_v = std::numeric_limits<u_int16_t>::max();
-    u_int16_t max_v = 0;
+    uint16_t min_v = std::numeric_limits<u_int16_t>::max();
+    uint16_t max_v = 0;
     uint64_t sum = 0;
-    for (u_int64_t i = 0; i < npixels; i++) {
-        const u_int16_t v = img[i];
+    for (uint64_t i = 0; i < npixels; i++) {
+        const uint16_t v = img[i];
         min_v = std::min(min_v, v);
         max_v = std::max(max_v, v);
         sum += static_cast<uint64_t>(v);
@@ -58,16 +49,16 @@ void print_u16_stats(const char *label, const u_int16_t *img, u_int64_t npixels)
 // ---------------------------------------------------------------------------
 // Unified wrapper – picks the GPU path by default.
 // ---------------------------------------------------------------------------
-void warp_affine_planar(const u_int16_t *source, u_int16_t *dest,
+void warp_affine_planar(const uint16_t *source, uint16_t *dest,
                         const cv::Mat &affine_2x3, long width, long height) {
     warp_affine_planar_gpu(source, dest, affine_2x3, width, height);
 }
 
-cv::Mat draw_star_boxes(const cv::Mat &base_gray, const star *stars, u_int32_t count) {
+cv::Mat draw_star_boxes(const cv::Mat &base_gray, const star *stars, uint32_t count) {
     cv::Mat vis;
     cv::cvtColor(base_gray, vis, cv::COLOR_GRAY2BGR);
 
-    for (u_int32_t i = 0; i < count; i++) {
+    for (uint32_t i = 0; i < count; i++) {
         const int x = static_cast<int>(stars[i].start_x);
         const int y = static_cast<int>(stars[i].start_y);
         const int w = static_cast<int>(stars[i].size_x);
@@ -113,9 +104,9 @@ int main(int argc, char **argv) {
     threshold_params t_par;
         t_par.window_size = 201;
 
-    u_int16_t max_star_size = 100;
-    u_int16_t min_star_size = 10;
-    u_int16_t max_stars = 1000;
+    uint16_t max_star_size = 100;
+    uint16_t min_star_size = 10;
+    uint16_t max_stars = 1000;
     int descriptor_neighbors = 2;
     bool show_steps = true;
     bool threshold_algo_set = false;
@@ -145,13 +136,13 @@ int main(int argc, char **argv) {
             case 't':
                 num = strtol(optarg, &end, 10);
                 if (end != optarg && num >= 0 && num <= 65535) {
-                    t_par.threshold = static_cast<u_int16_t>(num);
+                    t_par.threshold = static_cast<uint16_t>(num);
                 }
                 break;
             case 'r':
                 num = strtol(optarg, &end, 10);
                 if (end != optarg && num >= 1 && num <= 65535) {
-                    t_par.reduce_factor = static_cast<u_int16_t>(num);
+                    t_par.reduce_factor = static_cast<uint16_t>(num);
                 }
                 break;
             case 'a':
@@ -167,19 +158,19 @@ int main(int argc, char **argv) {
             case 'w':
                 num = strtol(optarg, &end, 10);
                 if (end != optarg && num >= 1 && num <= 65535) {
-                    t_par.window_size = static_cast<u_int16_t>(num);
+                    t_par.window_size = static_cast<uint16_t>(num);
                 }
                 break;
             case 'M':
                 num = strtol(optarg, &end, 10);
                 if (end != optarg && num >= 1 && num <= 65535) {
-                    max_star_size = static_cast<u_int16_t>(num);
+                    max_star_size = static_cast<uint16_t>(num);
                 }
                 break;
             case 'm':
                 num = strtol(optarg, &end, 10);
                 if (end != optarg && num >= 0 && num <= 65535 && num < max_star_size) {
-                    min_star_size = static_cast<u_int16_t>(num);
+                    min_star_size = static_cast<uint16_t>(num);
                 }
                 break;
             case 'k':
@@ -238,43 +229,43 @@ int main(int argc, char **argv) {
     const long height = height1;
     const long channels = channels1;
 
-    const u_int64_t npixels = static_cast<u_int64_t>(width) * static_cast<u_int64_t>(height);
-    const u_int64_t totpixels = npixels * static_cast<u_int64_t>(channels);
+    const uint64_t npixels = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
+    const uint64_t totpixels = npixels * static_cast<uint64_t>(channels);
 
-    u_int16_t *fits_data1 = nullptr;
-    u_int16_t *fits_data2 = nullptr;
-    CHECK(cudaMallocManaged(&fits_data1, totpixels * sizeof(u_int16_t)));
-    CHECK(cudaMallocManaged(&fits_data2, totpixels * sizeof(u_int16_t)));
+    uint16_t *fits_data1 = nullptr;
+    uint16_t *fits_data2 = nullptr;
+    CHECK(cudaMallocManaged(&fits_data1, totpixels * sizeof(uint16_t)));
+    CHECK(cudaMallocManaged(&fits_data2, totpixels * sizeof(uint16_t)));
 
-    u_int16_t *gray_image1 = nullptr;
-    u_int16_t *gray_image2 = nullptr;
-    CHECK(cudaMallocManaged(&gray_image1, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMallocManaged(&gray_image2, npixels * sizeof(u_int16_t)));
-    CHECK(cudaMemPrefetchAsync(gray_image1, npixels * sizeof(u_int16_t), devLoc, 0));
-    CHECK(cudaMemPrefetchAsync(gray_image2, npixels * sizeof(u_int16_t), devLoc, 0));
+    uint16_t *gray_image1 = nullptr;
+    uint16_t *gray_image2 = nullptr;
+    CHECK(cudaMallocManaged(&gray_image1, npixels * sizeof(uint16_t)));
+    CHECK(cudaMallocManaged(&gray_image2, npixels * sizeof(uint16_t)));
+    CHECK(cudaMemPrefetchAsync(gray_image1, npixels * sizeof(uint16_t), devLoc, 0));
+    CHECK(cudaMemPrefetchAsync(gray_image2, npixels * sizeof(uint16_t), devLoc, 0));
 
-    u_int8_t *threshold_image1 = nullptr;
-    u_int8_t *threshold_image2 = nullptr;
-    CHECK(cudaMallocManaged(&threshold_image1, npixels * sizeof(u_int8_t)));
-    CHECK(cudaMallocManaged(&threshold_image2, npixels * sizeof(u_int8_t)));
-    CHECK(cudaMemPrefetchAsync(threshold_image1, npixels * sizeof(u_int8_t), devLoc, 0));
-    CHECK(cudaMemPrefetchAsync(threshold_image2, npixels * sizeof(u_int8_t), devLoc, 0));
+    uint8_t *threshold_image1 = nullptr;
+    uint8_t *threshold_image2 = nullptr;
+    CHECK(cudaMallocManaged(&threshold_image1, npixels * sizeof(uint8_t)));
+    CHECK(cudaMallocManaged(&threshold_image2, npixels * sizeof(uint8_t)));
+    CHECK(cudaMemPrefetchAsync(threshold_image1, npixels * sizeof(uint8_t), devLoc, 0));
+    CHECK(cudaMemPrefetchAsync(threshold_image2, npixels * sizeof(uint8_t), devLoc, 0));
 
     get_fits_data(fptr1, totpixels, fits_data1);
     get_fits_data(fptr2, totpixels, fits_data2);
-    CHECK(cudaMemPrefetchAsync(fits_data1, totpixels * sizeof(u_int16_t), devLoc, 0));
-    CHECK(cudaMemPrefetchAsync(fits_data2, totpixels * sizeof(u_int16_t), devLoc, 0));
+    CHECK(cudaMemPrefetchAsync(fits_data1, totpixels * sizeof(uint16_t), devLoc, 0));
+    CHECK(cudaMemPrefetchAsync(fits_data2, totpixels * sizeof(uint16_t), devLoc, 0));
 
-    u_int16_t *rgb_data1 = fits_data1;
-    u_int16_t *rgb_data2 = fits_data2;
+    uint16_t *rgb_data1 = fits_data1;
+    uint16_t *rgb_data2 = fits_data2;
 
     double t_start = cpuSecond();
 
     if (channels == 1) {
-        CHECK(cudaMallocManaged(&rgb_data1, npixels * 3 * sizeof(u_int16_t)));
-        CHECK(cudaMallocManaged(&rgb_data2, npixels * 3 * sizeof(u_int16_t)));
-        CHECK(cudaMemPrefetchAsync(rgb_data1, npixels * 3 * sizeof(u_int16_t), devLoc, 0));
-        CHECK(cudaMemPrefetchAsync(rgb_data2, npixels * 3 * sizeof(u_int16_t), devLoc, 0));
+        CHECK(cudaMallocManaged(&rgb_data1, npixels * 3 * sizeof(uint16_t)));
+        CHECK(cudaMallocManaged(&rgb_data2, npixels * 3 * sizeof(uint16_t)));
+        CHECK(cudaMemPrefetchAsync(rgb_data1, npixels * 3 * sizeof(uint16_t), devLoc, 0));
+        CHECK(cudaMemPrefetchAsync(rgb_data2, npixels * 3 * sizeof(uint16_t), devLoc, 0));
 
         // For mono input, debayer first to obtain RGB planes expected by the rest of pipeline.
         demosaic_bilinear_rggb_cpu(fits_data1, rgb_data1, width, height, 1);
@@ -300,10 +291,10 @@ int main(int argc, char **argv) {
     CHECK(cudaMallocManaged(&d_stars1, max_stars * sizeof(star)));
     CHECK(cudaMallocManaged(&d_stars2, max_stars * sizeof(star)));
 
-    u_int32_t *d_num_stars1 = nullptr;
-    u_int32_t *d_num_stars2 = nullptr;
-    CHECK(cudaMallocManaged(&d_num_stars1, sizeof(u_int32_t)));
-    CHECK(cudaMallocManaged(&d_num_stars2, sizeof(u_int32_t)));
+    uint32_t *d_num_stars1 = nullptr;
+    uint32_t *d_num_stars2 = nullptr;
+    CHECK(cudaMallocManaged(&d_num_stars1, sizeof(uint32_t)));
+    CHECK(cudaMallocManaged(&d_num_stars2, sizeof(uint32_t)));
     *d_num_stars1 = 0;
     *d_num_stars2 = 0;
 
@@ -400,7 +391,7 @@ int main(int argc, char **argv) {
     if (!affine_2x3.empty() && inlier_matches.size() >= 3) {
 
         // ---------- CPU reference ----------
-        u_int16_t *aligned_cpu = nullptr;
+        uint16_t *aligned_cpu = nullptr;
         CHECK(cudaMallocManaged(&aligned_cpu, npixels * sizeof(u_int16_t) * 3));
 
         double t_cpu = cpuSecond();
@@ -408,7 +399,7 @@ int main(int argc, char **argv) {
         t_cpu = cpuSecond() - t_cpu;
 
         // ---------- GPU ----------
-        u_int16_t *aligned_gpu = nullptr;
+        uint16_t *aligned_gpu = nullptr;
         CHECK(cudaMallocManaged(&aligned_gpu, npixels * sizeof(u_int16_t) * 3));
         // Prefetch GPU destination buffer to device to avoid first-touch page faults
         CHECK(cudaMemPrefetchAsync(aligned_gpu, npixels * sizeof(u_int16_t) * 3, devLoc, 0));
@@ -418,15 +409,15 @@ int main(int argc, char **argv) {
         t_gpu = cpuSecond() - t_gpu;
 
         // ---------- Pixel-difference statistics ----------
-        u_int64_t diff_pixels = 0;
-        u_int64_t diff_sum    = 0;
-        u_int16_t diff_max    = 0;
-        for (u_int64_t i = 0; i < npixels * 3; i++) {
-            u_int16_t cpu_v = aligned_cpu[i];
-            u_int16_t gpu_v = aligned_gpu[i];
+        uint64_t diff_pixels = 0;
+        uint64_t diff_sum    = 0;
+        uint16_t diff_max    = 0;
+        for (uint64_t i = 0; i < npixels * 3; i++) {
+            auto cpu_v = aligned_cpu[i];
+            auto gpu_v = aligned_gpu[i];
             if (cpu_v != gpu_v) {
                 diff_pixels++;
-                u_int16_t d = (cpu_v > gpu_v) ? (u_int16_t)(cpu_v - gpu_v) : (u_int16_t)(gpu_v - cpu_v);
+                uint16_t d = (cpu_v > gpu_v) ? (uint16_t)(cpu_v - gpu_v) : (uint16_t)(gpu_v - cpu_v);
                 diff_sum += d;
                 if (d > diff_max) diff_max = d;
             }

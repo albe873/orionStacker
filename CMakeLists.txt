@@ -8,7 +8,47 @@ if (NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 endif()
 
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui features2d calib3d videoio flann)
+# ------------------------------------------------------------------
+# OpenCV detection: prefer static build from third_party, fall back
+# to system-installed dynamic OpenCV with a helpful message.
+# ------------------------------------------------------------------
+set(_OPENCV_STATIC_INSTALL "${CMAKE_SOURCE_DIR}/third_party/opencv_install")
+set(_OPENCV_STATIC_CONFIG "${_OPENCV_STATIC_INSTALL}/lib/cmake/opencv4/OpenCVConfig.cmake")
+
+# 1) Try the pre-built static OpenCV.
+if (EXISTS "${_OPENCV_STATIC_CONFIG}")
+    set(OpenCV_DIR "${_OPENCV_STATIC_INSTALL}/lib/cmake/opencv4" CACHE PATH "Path to statically built OpenCV config")
+    message(STATUS "Using pre-built static OpenCV at: ${_OPENCV_STATIC_INSTALL}")
+    find_package(OpenCV REQUIRED NO_DEFAULT_PATH COMPONENTS core imgproc imgcodecs highgui features2d calib3d flann)
+    set(_OPENCV_FOUND_STATIC TRUE)
+endif()
+
+# 2) Static build not found — try ExternalProject (build from submodule on demand).
+if (NOT _OPENCV_FOUND_STATIC)
+    if (EXISTS "${CMAKE_SOURCE_DIR}/third_party/opencv/CMakeLists.txt")
+        message(STATUS "Pre-built static OpenCV not found at ${_OPENCV_STATIC_INSTALL}")
+        message(STATUS "To build it manually, run:  ./third_party/build_opencv_static.sh")
+        add_subdirectory(third_party)
+        # third_party/CMakeLists.txt sets OpenCV_DIR in the parent scope.
+    endif()
+
+    if (OpenCV_DIR AND EXISTS "${OpenCV_DIR}/OpenCVConfig.cmake")
+        find_package(OpenCV REQUIRED NO_DEFAULT_PATH COMPONENTS core imgproc imgcodecs highgui features2d calib3d flann)
+        set(_OPENCV_FOUND_STATIC TRUE)
+    endif()
+endif()
+
+# 3) Fall back to system-installed (dynamic) OpenCV.
+if (NOT _OPENCV_FOUND_STATIC)
+    message(STATUS "Static OpenCV not available — falling back to system OpenCV.")
+    message(STATUS "For a fully static build, run:  ./third_party/build_opencv_static.sh")
+    message(STATUS "Then re-run:  cmake --build .")
+    find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui features2d calib3d flann)
+endif()
+
+
+
+
 find_package(CUDAToolkit)
 find_package(OpenMP)
 
@@ -84,7 +124,7 @@ function(add_cuda_hip_executable target_name cuda_source)
                     -I${CMAKE_SOURCE_DIR}/src/debayer/include
                     -I${CMAKE_SOURCE_DIR}/src/calibration/include
                     -I${CMAKE_SOURCE_DIR}/src/stacker/include
-                    -I${CMAKE_SOURCE_DIR}/src/star_finder
+                    -I${CMAKE_SOURCE_DIR}/src/star_finder/include
                     ${extra_includes}
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source}
             COMMENT "Hipifying ${cuda_source}"

@@ -6,11 +6,11 @@
 
 
 // ---------- find global min / max ----------
-inline void cpu_find_minmax(const u_int16_t *image, u_int64_t npixels,
-                            u_int16_t &out_min, u_int16_t &out_max) {
+inline void cpu_find_minmax(const uint16_t *image, uint64_t npixels,
+                            uint16_t &out_min, uint16_t &out_max) {
     out_min = 65535;
     out_max = 0;
-    for (u_int64_t i = 0; i < npixels; i++) {
+    for (uint64_t i = 0; i < npixels; i++) {
         if (image[i] < out_min)
             out_min = image[i];
         if (image[i] > out_max)
@@ -19,16 +19,16 @@ inline void cpu_find_minmax(const u_int16_t *image, u_int64_t npixels,
 }
 
 
-inline void cpu_calculate_histogram(const u_int16_t *image, u_int64_t npixels,
+inline void cpu_calculate_histogram(const uint16_t *image, uint64_t npixels,
                                     double *histogram,
-                                    u_int16_t img_min, u_int16_t img_max) {
+                                    uint16_t img_min, uint16_t img_max) {
     for (int i = 0; i < OTSU_HISTOGRAM_SIZE; i++)
         histogram[i] = 0.0;
 
     double scale = (double)(OTSU_HISTOGRAM_SIZE - 1) / (double)(img_max - img_min);
 
-    for (u_int64_t i = 0; i < npixels; i++) {
-        u_int16_t v = image[i];
+    for (uint64_t i = 0; i < npixels; i++) {
+        auto v = image[i];
         if (v < img_min)
             v = img_min;
         if (v > img_max)
@@ -75,24 +75,24 @@ inline int cpu_find_otsu_threshold(const double *histogram) {
 
 
 // ---------- map OTSU bin index back to 16-bit value ----------
-inline double bin_to_value(int bin, u_int16_t img_min, u_int16_t img_max) {
+inline double bin_to_value(int bin, uint16_t img_min, uint16_t img_max) {
     return (double)img_min
            + (double)bin * (double)(img_max - img_min)
                / (double)(OTSU_HISTOGRAM_SIZE - 1);
 }
 
 
-inline double cpu_calculate_mean(const u_int16_t *image, u_int64_t width, u_int64_t height) {
-    u_int64_t npixels = width * height;
+inline double cpu_calculate_mean(const uint16_t *image, uint64_t width, uint64_t height) {
+    uint64_t npixels = width * height;
     double sum = 0.0;
-    for (u_int64_t i = 0; i < npixels; i++)
+    for (uint64_t i = 0; i < npixels; i++)
         sum += (double)image[i];
     return sum / (double)npixels;
 }
 
 
-inline void mean_filter(const u_int16_t *image, double *temp_filtered,
-                        u_int64_t width, u_int64_t height, u_int64_t npixels,
+inline void mean_filter(const uint16_t *image, double *temp_filtered,
+                        uint64_t width, uint64_t height, uint64_t npixels,
                         int window_size) {
     int half_window = window_size / 2;
 
@@ -100,24 +100,24 @@ inline void mean_filter(const u_int16_t *image, double *temp_filtered,
     double *integral = new double[npixels];
 
     double row_sum = 0.0;
-    for (u_int64_t x = 0; x < width; x++) {
+    for (uint64_t x = 0; x < width; x++) {
         row_sum += (double)image[x];
         integral[x] = row_sum;
     }
-    for (u_int64_t y = 1; y < height; y++) {
+    for (uint64_t y = 1; y < height; y++) {
         row_sum = 0.0;
-        u_int64_t row_offset = y * width;
-        u_int64_t prev_row_offset = (y - 1) * width;
-        for (u_int64_t x = 0; x < width; x++) {
+        uint64_t row_offset = y * width;
+        uint64_t prev_row_offset = (y - 1) * width;
+        for (uint64_t x = 0; x < width; x++) {
             row_sum += (double)image[row_offset + x];
             integral[row_offset + x] = integral[prev_row_offset + x] + row_sum;
         }
     }
 
     // 2. O(1) mean per pixel
-    for (u_int64_t y = 0; y < height; y++) {
-        for (u_int64_t x = 0; x < width; x++) {
-            u_int64_t idx = y * width + x;
+    for (uint64_t y = 0; y < height; y++) {
+        for (uint64_t x = 0; x < width; x++) {
+            uint64_t idx = y * width + x;
 
             int64_t y1 = y - half_window;
             if (y1 < 0)
@@ -148,13 +148,13 @@ inline void mean_filter(const u_int16_t *image, double *temp_filtered,
 }
 
 
-void cpu_otsu_centralized_threshold(const u_int16_t *image, u_int8_t *output,
-                                    u_int64_t width, u_int64_t height,
-                                    u_int16_t window_size, float tr_scale) {
-    u_int64_t npixels = width * height;
+void cpu_otsu_centralized_threshold(const uint16_t *image, uint8_t *output,
+                                    uint64_t width, uint64_t height,
+                                    uint16_t window_size, float tr_scale) {
+    uint64_t npixels = width * height;
 
     // 0 - find image min / max
-    u_int16_t img_min, img_max;
+    uint16_t img_min, img_max;
     cpu_find_minmax(image, npixels, img_min, img_max);
     if (img_max <= img_min) img_max = img_min + 1;
 
@@ -176,7 +176,7 @@ void cpu_otsu_centralized_threshold(const u_int16_t *image, u_int8_t *output,
     mean_filter(image, mean_filtered, width, height, npixels, window_size);
 
     // 4 - centralized threshold
-    for (u_int64_t i = 0; i < npixels; i++) {
+    for (uint64_t i = 0; i < npixels; i++) {
         double pixel_val       = (double)image[i];
         double filtered_val    = mean_filtered[i];
         double pixel_threshold = filtered_val - global_mean + otsu_threshold;

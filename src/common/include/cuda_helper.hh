@@ -1,6 +1,8 @@
 #ifndef CUDA_HELPER_H
 #define CUDA_HELPER_H
 
+#include <cstdio>
+
 #ifdef __HIPCC__
     #include <hip/hip_runtime.h>
     typedef hipError_t cudaError_t;
@@ -33,8 +35,6 @@ static inline PrefetchDeviceArg make_prefetch_device_arg(int dev) {
     return loc;
 }
 #endif
-
-#include <cstdio>
 
 #define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)
 inline void cuda_check(cudaError_t error_code, const char *file, int line) {

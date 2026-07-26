@@ -2,40 +2,16 @@
 #include <cmath>
 #include <algorithm>
 
-#define OTSU_HISTOGRAM_SIZE 4096
+#define OTSU_HISTOGRAM_SIZE 65536
 
 
-// ---------- find global min / max ----------
-inline void cpu_find_minmax(const uint16_t *image, uint64_t npixels,
-                            uint16_t &out_min, uint16_t &out_max) {
-    out_min = 65535;
-    out_max = 0;
-    #pragma omp parallel for shared(out_min, out_max)
-    for (uint64_t i = 0; i < npixels; i++) {
-        if (image[i] < out_min)
-            out_min = image[i];
-        if (image[i] > out_max)
-            out_max = image[i];
-    }
-}
-
-
-inline void cpu_calculate_histogram(const uint16_t *image, uint64_t npixels,
-                                    double *histogram,
-                                    uint16_t img_min, uint16_t img_max) {
+inline void cpu_calculate_histogram(const uint16_t *image, uint64_t npixels, double *histogram) {
     for (int i = 0; i < OTSU_HISTOGRAM_SIZE; i++)
         histogram[i] = 0.0;
 
-    double scale = (double)(OTSU_HISTOGRAM_SIZE - 1) / (double)(img_max - img_min);
-
     for (uint64_t i = 0; i < npixels; i++) {
         auto v = image[i];
-        if (v < img_min)
-            v = img_min;
-        if (v > img_max)
-            v = img_max;
-        int bin = (int)((double)(v - img_min) * scale);
-        histogram[bin] += 1.0;
+        histogram[v] += 1.0;
     }
 
     // normalize to probabilities
@@ -74,14 +50,6 @@ inline int cpu_find_otsu_threshold(const double *histogram) {
         }
     }
     return threshold_bin;
-}
-
-
-// ---------- map OTSU bin index back to 16-bit value ----------
-inline double bin_to_value(int bin, uint16_t img_min, uint16_t img_max) {
-    return (double)img_min
-           + (double)bin * (double)(img_max - img_min)
-               / (double)(OTSU_HISTOGRAM_SIZE - 1);
 }
 
 
@@ -158,20 +126,12 @@ void cpu_otsu_centralized_threshold(const uint16_t *image, uint8_t *output,
                                     uint16_t window_size, float tr_scale) {
     uint64_t npixels = width * height;
 
-    // 0 - find image min / max
-    uint16_t img_min, img_max;
-    cpu_find_minmax(image, npixels, img_min, img_max);
-    if (img_max <= img_min) img_max = img_min + 1;
-
-    // 1 - histogram + Otsu (bin index)
+    // 1 - histogram + Otsu
     double *histogram = new double[OTSU_HISTOGRAM_SIZE];
-    cpu_calculate_histogram(image, npixels, histogram, img_min, img_max);
-    int otsu_bin = cpu_find_otsu_threshold(histogram);
-    delete[] histogram;
-
-    // bin index -> threshold value
-    double otsu_threshold = bin_to_value(otsu_bin, img_min, img_max);
+    cpu_calculate_histogram(image, npixels, histogram);
+    double otsu_threshold = cpu_find_otsu_threshold(histogram);
     otsu_threshold *= (double)tr_scale;
+    delete[] histogram;
 
     // 2 - global mean
     double global_mean = cpu_calculate_mean(image, width, height);

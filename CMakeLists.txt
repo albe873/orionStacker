@@ -170,8 +170,11 @@ function(add_cuda_hip_library target_name cuda_source)
             OUTPUT ${HIPIFIED_FILE}
             COMMAND hipify-clang ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source} -o ${HIPIFIED_FILE}
                     ${_HIPIFY_CUDA_PATH_ARG}
-                    -I${CMAKE_SOURCE_DIR}/src 
                     -I${CMAKE_SOURCE_DIR}/src/common/include
+                    -I${CMAKE_SOURCE_DIR}/src/debayer/include
+                    -I${CMAKE_SOURCE_DIR}/src/calibration/include
+                    -I${CMAKE_SOURCE_DIR}/src/stacker/include
+                    -I${CMAKE_SOURCE_DIR}/src/star_finder/include
                     ${extra_includes}
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${cuda_source}
             COMMENT "Hipifying ${cuda_source}"

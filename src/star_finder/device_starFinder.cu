@@ -297,7 +297,7 @@ void compute_threshold_gpu(const uint16_t *img, uint8_t *out_img,
             CHECK(cudaGetLastError());
             break;
         case OTSU_CENTRALIZED:
-            cuda_otsu_centralized_threshold(img, out_img, width, height, params.window_size, params.threshold_scale);
+            otsu_centralized_threshold_gpu(img, out_img, width, height, params.window_size, params.threshold_scale);
             
     }
     CHECK(cudaDeviceSynchronize());

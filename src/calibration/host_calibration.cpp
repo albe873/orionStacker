@@ -63,12 +63,12 @@ void masterFlat_cpu(const uint16_t* __restrict__ flat_all, const float* __restri
 void calibrateLights_cpu(const uint16_t* __restrict__ light_all, const float* __restrict__ master_bias, const float* __restrict__ master_dark, const float* __restrict__ master_flat, uint16_t* __restrict__ calib_all, uint64_t width, uint64_t height, int light_count) {
     uint64_t npixels = width * height;
 
-    float sum = 0.0F;
+    double sum = 0.0;
     
     #pragma omp parallel for reduction(+:sum)
     for (int64_t i = 0; i < npixels; i++)
         sum += master_flat[i];
-    float master_flat_mean_val = sum / (float)npixels;
+    float master_flat_mean_val = sum / npixels;
     
     for (int i = 0; i < light_count; i++) {
         #pragma omp parallel for

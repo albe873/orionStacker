@@ -2,7 +2,7 @@
 #include <cmath>
 #include <algorithm>
 
-#define OTSU_HISTOGRAM_SIZE 1024
+#define OTSU_HISTOGRAM_SIZE 4096
 
 
 // ---------- find global min / max ----------
@@ -10,6 +10,7 @@ inline void cpu_find_minmax(const uint16_t *image, uint64_t npixels,
                             uint16_t &out_min, uint16_t &out_max) {
     out_min = 65535;
     out_max = 0;
+    #pragma omp parallel for shared(out_min, out_max)
     for (uint64_t i = 0; i < npixels; i++) {
         if (image[i] < out_min)
             out_min = image[i];
@@ -54,20 +55,22 @@ inline int cpu_find_otsu_threshold(const double *histogram) {
 
     for (int t = 0; t < OTSU_HISTOGRAM_SIZE; t++) {
         w_B += histogram[t];
-        if (w_B == 0.0) continue;
+        if (w_B == 0.0)
+            continue;
 
         double w_F = 1.0 - w_B;
-        if (w_F == 0.0) break;
+        if (w_F != 0.0) {
 
-        sum_B += (double)t * histogram[t];
+            sum_B += (double)t * histogram[t];
 
-        double mean_B = sum_B / w_B;
-        double mean_F = (sum_all - sum_B) / w_F;
-        double variance = w_B * w_F * (mean_B - mean_F) * (mean_B - mean_F);
+            double mean_B = sum_B / w_B;
+            double mean_F = (sum_all - sum_B) / w_F;
+            double variance = w_B * w_F * (mean_B - mean_F) * (mean_B - mean_F);
 
-        if (variance > max_variance) {
-            max_variance = variance;
-            threshold_bin = t;
+            if (variance > max_variance) {
+                max_variance = variance;
+                threshold_bin = t;
+            }
         }
     }
     return threshold_bin;
@@ -100,6 +103,7 @@ inline void mean_filter(const uint16_t *image, double *temp_filtered,
     double *integral = new double[npixels];
 
     double row_sum = 0.0;
+    #pragma omp parallel for reduction(+:row_sum)
     for (uint64_t x = 0; x < width; x++) {
         row_sum += (double)image[x];
         integral[x] = row_sum;
@@ -115,6 +119,7 @@ inline void mean_filter(const uint16_t *image, double *temp_filtered,
     }
 
     // 2. O(1) mean per pixel
+    #pragma omp parallel for
     for (uint64_t y = 0; y < height; y++) {
         for (uint64_t x = 0; x < width; x++) {
             uint64_t idx = y * width + x;

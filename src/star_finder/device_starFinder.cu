@@ -5,77 +5,90 @@
 #include "device_otsu_centralized.cu"
 #include "device_warp.cu"
 
-__global__ void kernel_sum_brightness_planar(const uint16_t *input_rgb, uint64_t input_width, uint64_t npixels, star s, star_detail *sd) {
-    // coordinates
-    uint64_t x = s.start_x + blockIdx.x * blockDim.x + threadIdx.x;
-    uint64_t y = s.start_y + blockIdx.y * blockDim.y + threadIdx.y;
+#define BLOCK_SIZE_1D   256
+#define BLOCK_DIM_2D    16
+#define BLOCK_SIZE_2D   BLOCK_DIM_2D*BLOCK_DIM_2D
+#define WARP_SIZE       32
 
-    // boundary check
-    if (x >= s.start_x + s.size_x || y >= s.start_y + s.size_y)
-        return;
-
-    // shared memory for sums
-    __shared__ double shared_red_sum, shared_green_sum, shared_blue_sum;
-    // initialize shared memory (only first thread per block)
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        shared_red_sum = 0;
-        shared_green_sum = 0;
-        shared_blue_sum = 0;
-    }
-    __syncthreads();    // synchronize threads of the block before shared memory use
-
-    // add in shared memory
-    uint64_t idx = y * input_width + x;
-    atomicAdd(&shared_red_sum,   (double) input_rgb[idx]);
-    idx += npixels;
-    atomicAdd(&shared_green_sum, (double) input_rgb[idx]);
-    idx += npixels;
-    atomicAdd(&shared_blue_sum,  (double) input_rgb[idx]);
-    __syncthreads();
-
-    // add to global memory
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        atomicAdd(&sd->b_red,   shared_red_sum);
-        atomicAdd(&sd->b_green, shared_green_sum);
-        atomicAdd(&sd->b_blue,  shared_blue_sum);
-        atomicAdd(&sd->b,       (0.299f*shared_red_sum + 0.587f*shared_green_sum + 0.114f*shared_blue_sum));
-    }
+// Shared memory reduction for double (tree-based, no atomics)
+__inline__ __device__ double warp_reduce_sum(double val) {
+    for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2)
+        val += __shfl_xor_sync(0xffffffff, val, offset);
+    return val;
 }
 
-__global__ void kernel_baricenter(const uint16_t *input_grayscale, uint64_t input_width, star s, star_detail *sd) {
-    // coordinates
-    uint64_t x = s.start_x + blockIdx.x * blockDim.x + threadIdx.x;
-    uint64_t y = s.start_y + blockIdx.y * blockDim.y + threadIdx.y;
+__inline__ __device__ double block_reduce_sum(double val) {
+    __shared__ double shared[BLOCK_SIZE_1D / WARP_SIZE]; // one per warp
+    int lane = threadIdx.x % WARP_SIZE;
+    int wid = threadIdx.x / WARP_SIZE;
 
-    // boundary check
-    if (x >= s.start_x + s.size_x || y >= s.start_y + s.size_y)
-        return;
-
-    uint64_t idx = y * input_width + x;
-    uint16_t value = input_grayscale[idx];
-    
-    // Accumulate weighted positions
-    double x_to_sum = (double) x * value / sd->b;
-    double y_to_sum = (double) y * value / sd->b;
-
-    // shared memory for sums
-    __shared__ double shared_x_sum, shared_y_sum;
-    // initialize shared memory (only first thread per block)
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        shared_x_sum = 0;
-        shared_y_sum = 0;
-    }
-    __syncthreads();    // synchronize threads of the block before shared memory use
-
-    // add in shared memory
-    atomicAdd(&shared_x_sum, x_to_sum);
-    atomicAdd(&shared_y_sum, y_to_sum);
+    val = warp_reduce_sum(val);
+    if (lane == 0)
+        shared[wid] = val;
     __syncthreads();
 
-    // add to global memory
-    if (threadIdx.x == 0 && threadIdx.y == 0) {
-        atomicAdd(&sd->x, shared_x_sum);
-        atomicAdd(&sd->y, shared_y_sum);
+    val = (threadIdx.x < blockDim.x / WARP_SIZE) ? shared[lane] : 0.0;
+    if (wid == 0)
+        val = warp_reduce_sum(val);
+    return val;
+}
+
+// Fused kernel: brightness AND baricenter in one pass
+__global__ void kernel_compute_star_details_planar(
+    const uint16_t* __restrict__ input_rgb,
+    const uint16_t* __restrict__ input_grayscale,
+    uint64_t width,
+    uint64_t npixels,
+    const star* __restrict__ stars,
+    star_detail* __restrict__ star_details,
+    uint32_t n_stars)
+{   
+    // Each block handles one star
+    star s = stars[blockIdx.x];
+    star_detail local = {0, 0, 0, 0, 0, 0};
+
+    uint64_t pixels_per_star = (uint64_t)s.size_x * s.size_y;
+    // loop to handle stars with more pixels than BLOCK_SIZE_1D
+    for (uint64_t tid = threadIdx.x; tid < pixels_per_star; tid += BLOCK_SIZE_1D) {
+        uint64_t px = tid % s.size_x;   // relative coordinates
+        uint64_t py = tid / s.size_x;
+        uint64_t x = s.start_x + px;    // global coordinates
+        uint64_t y = s.start_y + py;
+        uint64_t idx = y * width + x;   // idx
+
+        auto gray_val = input_grayscale[idx];
+
+        // RGB channels
+        auto r = input_rgb[idx];
+        auto g = input_rgb[idx + npixels];
+        auto b = input_rgb[idx + 2 * npixels];
+        float brightness = 0.299f*r + 0.587f*g + 0.114f*b;
+
+        local.b_red   += r;
+        local.b_green += g;
+        local.b_blue  += b;
+        local.b       += brightness;
+        local.x       += (double)x * gray_val;
+        local.y       += (double)y * gray_val;
+    }
+
+    // Tree reduction within the block
+    local.b_red   = block_reduce_sum(local.b_red);
+    local.b_green = block_reduce_sum(local.b_green);
+    local.b_blue  = block_reduce_sum(local.b_blue);
+    local.b       = block_reduce_sum(local.b);
+    local.x       = block_reduce_sum(local.x);
+    local.y       = block_reduce_sum(local.y);
+
+    // write to global memory
+    if (threadIdx.x == 0) {
+        double inv_b = 1.0 / local.b;
+        star_details[blockIdx.x].x       = local.x * inv_b;
+        star_details[blockIdx.x].y       = local.y * inv_b;
+        star_details[blockIdx.x].b_red   = local.b_red;
+        star_details[blockIdx.x].b_green = local.b_green;
+        star_details[blockIdx.x].b_blue  = local.b_blue;
+        star_details[blockIdx.x].b       = local.b;
     }
 }
 
@@ -247,7 +260,7 @@ __global__ void kernel_detect_stars(const uint8_t *input, uint64_t width, uint64
 // ---- Host function to launch the kernels ----
 
 void to_grayscale_planar_gpu(const uint16_t *img, uint16_t *img_gray, uint64_t npixels) {
-    dim3 block_size_1d(256);
+    dim3 block_size_1d(BLOCK_SIZE_1D);
     dim3 grid_size_1d((npixels + block_size_1d.x - 1) / block_size_1d.x);
 
     kernel_grayscale_planar<<<grid_size_1d, block_size_1d>>>(img, img_gray, npixels, npixels * 2);
@@ -266,10 +279,10 @@ void compute_threshold_gpu(const uint16_t *img, uint8_t *out_img,
         //CHECK(cudaMemPrefetchAsync(reduced_image, (npixels / reduce_factor / reduce_factor) * sizeof(u_int16_t), devLoc, 0));
     }
 
-    dim3 b_1d(256);
+    dim3 b_1d(BLOCK_SIZE_1D);
     dim3 g_1d((npixels / 2 + b_1d.x - 1) / b_1d.x);
 
-    dim3 b_2d(16, 16);
+    dim3 b_2d(BLOCK_DIM_2D, BLOCK_DIM_2D);
     dim3 g_2d((width  + b_2d.x - 1) / b_2d.x, 
               (height + b_2d.y - 1) / b_2d.y);
 
@@ -313,30 +326,11 @@ void compute_threshold_gpu(const uint16_t *img, uint8_t *out_img,
 void populate_star_details_gpu(star_detail *stars_details, star *stars, uint32_t n_stars, 
                                const uint16_t *img_rgb, const uint16_t *img_gray,
                                uint64_t width, uint64_t npixels) {
-    // for each star, first I compute brightness then the baricenter
-    // (I need the brightness sums to compute the baricenter)
-    for (uint32_t i = 0; i < n_stars; i++) {
+    for (uint32_t i = 0; i < n_stars; i++)
         init_star_detail(&stars_details[i]);
-        
-        // dimensions
-        dim3 block_size_star(16, 16);
-        dim3 grid_size_star(  (stars[i].size_x + block_size_star.x - 1) / block_size_star.x, 
-                              (stars[i].size_y + block_size_star.y - 1) / block_size_star.y
-                            );
-        // kernel launch
-        kernel_sum_brightness_planar<<<grid_size_star, block_size_star>>>(img_rgb, width, npixels, stars[i], &stars_details[i]);
-    } 
-    CHECK(cudaGetLastError());
-    CHECK(cudaDeviceSynchronize());
 
-    for (uint32_t i = 0; i < n_stars; i++) {
-        dim3 block_size_star(16, 16);
-        dim3 grid_size_star(  (stars[i].size_x + block_size_star.x - 1) / block_size_star.x, 
-                              (stars[i].size_y + block_size_star.y - 1) / block_size_star.y
-                            );
-        kernel_baricenter<<<grid_size_star, block_size_star>>>(img_gray, width, stars[i], &stars_details[i]);
-    }
-    CHECK(cudaGetLastError());
+    kernel_compute_star_details_planar<<<n_stars, BLOCK_SIZE_1D>>>(
+        img_rgb, img_gray, width, npixels, stars, stars_details, n_stars);
     CHECK(cudaDeviceSynchronize());
 }
 

@@ -189,10 +189,10 @@ int main(int argc, char **argv) {
     // 3.1 - Allocate memory for the stars info
     star *d_stars = nullptr;
     CHECK(cudaMallocManaged(&d_stars, max_stars * sizeof(star)));
+    CHECK(cudaMemPrefetchAsync(d_stars, max_stars * sizeof(star), devLoc, 0))
 
     uint32_t *d_num_stars = nullptr;
     CHECK(cudaMallocManaged(&d_num_stars, sizeof(uint32_t)));
-    *d_num_stars = 0;   // initialized to 0
     
     // 3.2 - Detect
     t_start = cpuSecond();
@@ -236,7 +236,7 @@ int main(int argc, char **argv) {
     
     // 3 - detection
     star *stars_cpu = new star[max_stars];
-    uint32_t num_stars_cpu = 0;
+    uint32_t num_stars_cpu;
     t_start = cpuSecond();
     detect_stars_cpu(threshold_image_cpu, width, height, max_star_size, min_star_size, stars_cpu, num_stars_cpu, max_stars);
     double time_detect_stars_cpu = cpuSecond() - t_start;

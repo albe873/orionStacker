@@ -142,9 +142,9 @@ void cpu_otsu_centralized_threshold(const uint16_t *image, uint8_t *output,
 
     // 4 - centralized threshold
     for (uint64_t i = 0; i < npixels; i++) {
-        double pixel_val       = (double)image[i];
-        double filtered_val    = mean_filtered[i];
-        double pixel_threshold = filtered_val - global_mean + otsu_threshold;
+        float pixel_val       = image[i];
+        float filtered_val    = mean_filtered[i];
+        float pixel_threshold = filtered_val - global_mean + otsu_threshold;
         output[i] = (pixel_val > pixel_threshold) ? 255 : 0;
     }
 

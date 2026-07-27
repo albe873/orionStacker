@@ -263,17 +263,17 @@ __global__ void kernel_otsu_centralized_threshold(const uint16_t *image,
                                                   const double *mean_filtered,
                                                   uint8_t *output,
                                                   uint64_t npixels,
-                                                  double global_mean,
-                                                  double otsu_threshold) {
+                                                  float global_mean,
+                                                  float otsu_threshold) {
     uint64_t idx = (uint64_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= npixels)
         return;
 
-    double pixel_val    = (double)image[idx];
-    double filtered_val = mean_filtered[idx];
+    float pixel_val    = image[idx];
+    float filtered_val = mean_filtered[idx];
 
     // T_c  =  mean_filtered  -  global_mean  +  otsu_threshold
-    double pixel_threshold = filtered_val - global_mean + otsu_threshold;
+    float pixel_threshold = filtered_val - global_mean + otsu_threshold;
 
     output[idx] = (pixel_val > pixel_threshold) ? 255 : 0;
 }

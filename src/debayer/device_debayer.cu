@@ -1,4 +1,5 @@
 #include "cuda_helper.hh"
+#include "debayer.hh"
 
 #include "MHC_filters.cuh"
 #include "MHC_apply.cuh"

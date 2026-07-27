@@ -491,8 +491,6 @@ int main(int argc, char** argv) {
     CHECK(cudaMallocManaged(&stacked_img, npixels * 3 * sizeof(uint16_t)));
 
     // ===== 5.2 stacking =====
-    float kappa = 3.0f;
-    uint16_t it = 5;
     winsorized_sigma_clipping_gpu(aligned_all, stacked_img, (uint16_t)aligned_count, npixels*3);
 
     // ===== 5.3 saving result =====

@@ -10,7 +10,6 @@
 int main(int argc, char **argv) {
     const char *in_dir = NULL;
     const char *out_dir = ".";
-    const char *file_name = "debayered";
 
     int opt, option_index = 0;
     static struct option long_options[] = {
@@ -97,7 +96,7 @@ int main(int argc, char **argv) {
     printf("\n==========================\n");
     printf("CPU\n");
 
-    CHECK(cudaMemPrefetchAsync(gray_all, npixels*image_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(gray_all, npixels*image_count*sizeof(uint16_t), make_prefetch_host_arg(), 0));
     CHECK(cudaDeviceSynchronize());
     
     // alloca memoria per il risultato CPU

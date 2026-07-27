@@ -1,4 +1,5 @@
 #include "cuda_helper.hh"
+#include "calibration.hh"
 
 #include <algorithm>
 

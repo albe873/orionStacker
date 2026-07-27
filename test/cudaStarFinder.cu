@@ -16,7 +16,6 @@ int main(int argc, char **argv) {
 
     char *filename = nullptr;
     int opt, option_index = 0;
-    long num;
     char *end;
     threshold_params t_par;
         t_par.window_size = 201;
@@ -220,7 +219,7 @@ int main(int argc, char **argv) {
     uint8_t *threshold_image_cpu = new uint8_t[npixels];
 
     // prefetch fits_data to CPU
-    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(uint16_t), cudaCpuDeviceId, 0));
+    CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(uint16_t), make_prefetch_host_arg(), 0));
     CHECK(cudaDeviceSynchronize());
 
     // 1 - grayscale
@@ -297,7 +296,6 @@ int main(int argc, char **argv) {
     int matching_details = 0;
     for (int i = 0; i < std::min((int)*d_num_stars, (int)num_stars_cpu); i++) {
         bool found = false;
-        bool matchesDetails = false;
 
         for (int j = 0; j < (int)*d_num_stars; j++) {
             if (d_stars[j].start_x == stars_cpu[i].start_x && d_stars[j].start_y == stars_cpu[i].start_y &&
@@ -319,7 +317,6 @@ int main(int argc, char **argv) {
                 
                 if (x_match && y_match && r_match && g_match && b_match && total_match) {
                     matching_details++;
-                    matchesDetails = true;
                 } else {
                     printf("  WARNING: GPU Star %u (CPU Star %u) details do not match!\n", i, j);
                     if (!x_match) printf("    x: GPU=%.6f CPU=%.6f diff=%.6f\n", stars_details[j].x, stars_details_cpu[i].x, fabs(stars_details[j].x - stars_details_cpu[i].x));

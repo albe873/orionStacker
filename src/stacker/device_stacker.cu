@@ -1,4 +1,5 @@
 #include "cuda_helper.hh"
+#include "stacker.hh"
 
 // -------------- uint16_t version --------------
 

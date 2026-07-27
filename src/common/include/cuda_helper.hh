@@ -24,16 +24,23 @@
 
 
 #if defined(__HIP_PLATFORM_AMD__)
-using PrefetchDeviceArg = int;
-static inline PrefetchDeviceArg make_prefetch_device_arg(int dev) { return dev; }
+    using PrefetchDeviceArg = int;
+    static inline PrefetchDeviceArg make_prefetch_device_arg(int dev = 0) { return dev; }
+    static inline PrefetchDeviceArg make_prefetch_host_arg(int host = 0) {return host;}
 #else
-using PrefetchDeviceArg = cudaMemLocation;
-static inline PrefetchDeviceArg make_prefetch_device_arg(int dev) {
-    PrefetchDeviceArg loc;
-    loc.id = dev;
-    loc.type = cudaMemLocationTypeDevice;
-    return loc;
-}
+    using PrefetchDeviceArg = cudaMemLocation;
+    static inline PrefetchDeviceArg make_prefetch_device_arg(int dev = 0) {
+        PrefetchDeviceArg loc;
+        loc.id = dev;
+        loc.type = cudaMemLocationTypeDevice;
+        return loc;
+    }
+    static inline PrefetchDeviceArg make_prefetch_host_arg(int host = 0) {
+        PrefetchDeviceArg loc;
+        loc.id = host;
+        loc.type = cudaMemLocationTypeHost;
+        return loc;
+    }
 #endif
 
 #define CHECK(err) do { cuda_check((err), __FILE__, __LINE__); } while(false)

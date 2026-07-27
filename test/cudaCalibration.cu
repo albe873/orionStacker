@@ -216,10 +216,11 @@ int main(int argc, char **argv) {
     printf("Calibration in CPU\n\n");
 
     // Prefetch bias_all, dark_all, flat_all, light_all to CPU
-    CHECK(cudaMemPrefetchAsync(bias_all, bias_pixels*bias_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
-    CHECK(cudaMemPrefetchAsync(dark_all, dark_pixels*dark_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
-    CHECK(cudaMemPrefetchAsync(flat_all, flat_pixels*flat_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
-    CHECK(cudaMemPrefetchAsync(light_all, light_pixels*light_count*sizeof(uint16_t), cudaCpuDeviceId, 0));
+    auto pf_host_id = make_prefetch_host_arg();
+    CHECK(cudaMemPrefetchAsync(bias_all, bias_pixels*bias_count*sizeof(uint16_t), pf_host_id, 0));
+    CHECK(cudaMemPrefetchAsync(dark_all, dark_pixels*dark_count*sizeof(uint16_t), pf_host_id, 0));
+    CHECK(cudaMemPrefetchAsync(flat_all, flat_pixels*flat_count*sizeof(uint16_t), pf_host_id, 0));
+    CHECK(cudaMemPrefetchAsync(light_all, light_pixels*light_count*sizeof(uint16_t), pf_host_id, 0));
     // Wait for prefetch to complete before accessing memory
     CHECK(cudaDeviceSynchronize());
 

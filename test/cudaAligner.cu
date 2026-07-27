@@ -109,7 +109,6 @@ int main(int argc, char **argv) {
     uint16_t max_stars = 1000;
     int descriptor_neighbors = 2;
     bool show_steps = true;
-    bool threshold_algo_set = false;
 
     static struct option long_options[] = {
         {"input-file1", required_argument, 0, 'f'},
@@ -146,7 +145,6 @@ int main(int argc, char **argv) {
                 }
                 break;
             case 'a':
-                threshold_algo_set = true;
                 if (strcmp(optarg, "simple") == 0) {
                     t_par.type = TR_SIMPLE;
                 } else if (strcmp(optarg, "adaptive") == 0) {

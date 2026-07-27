@@ -35,8 +35,9 @@ ADE_BUILD_DIR="${BUILD_DIR}/ade_build"
 ADE_INSTALL_DIR="${BUILD_DIR}/ade_install"
 
 if [ ! -d "$ADE_SRC_DIR" ]; then
-    echo "=== Cloning ADE framework ==="
-    git clone --depth=1 https://github.com/opencv/ade.git "$ADE_SRC_DIR"
+    echo "ERROR: ADE submodule source not found at $ADE_SRC_DIR"
+    echo "Please run: git submodule update --init --recursive"
+    exit 1
 fi
 
 echo "=== Building ADE statically ==="
@@ -62,6 +63,15 @@ set(ade_VERSION 0.1.0)
 set(ade_VERSION_MAJOR 0)
 set(ade_VERSION_MINOR 1)
 set(ade_VERSION_PATCH 0)
+
+# --- Version compatibility (required by CMake find_package) ---
+set(PACKAGE_VERSION "\${ade_VERSION}")
+if(PACKAGE_VERSION VERSION_LESS PACKAGE_FIND_VERSION)
+  set(PACKAGE_VERSION_COMPATIBLE FALSE)
+else()
+  set(PACKAGE_VERSION_COMPATIBLE TRUE)
+  if(PACKAGE_FIND_VERSION STREQUAL PACKAGE_VERSION)
+    set(PACKAGE_VERSION_EXACT TRUE)
 EOF
 cp "${ADE_CMAKE_DIR}/ade-config.cmake" "${ADE_CMAKE_DIR}/adeConfig.cmake"
 

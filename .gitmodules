@@ -2,3 +2,6 @@
 	path = third_party/opencv
 	url = https://github.com/opencv/opencv.git
 	branch = 4.x
+[submodule "third_party/ade"]
+	path = third_party/ade
+	url = https://github.com/opencv/ade.git

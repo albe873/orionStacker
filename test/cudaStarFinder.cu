@@ -189,7 +189,7 @@ int main(int argc, char **argv) {
     // 3.1 - Allocate memory for the stars info
     star *d_stars = nullptr;
     CHECK(cudaMallocManaged(&d_stars, max_stars * sizeof(star)));
-    CHECK(cudaMemPrefetchAsync(d_stars, max_stars * sizeof(star), devLoc, 0))
+    CHECK(cudaMemPrefetchAsync(d_stars, max_stars * sizeof(star), devLoc, 0));
 
     uint32_t *d_num_stars = nullptr;
     CHECK(cudaMallocManaged(&d_num_stars, sizeof(uint32_t)));

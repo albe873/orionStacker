@@ -164,6 +164,7 @@ int main(int argc, char **argv) {
     // Legge i dati dal file FITS
     get_fits_data(fptr, totpixels, fits_data);
     CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(uint16_t), devLoc, 0));
+    CHECK(cudaDeviceSynchronize());
 
     // ======================================================
     // GPU part

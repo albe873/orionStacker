@@ -326,9 +326,6 @@ void compute_threshold_gpu(const uint16_t *img, uint8_t *out_img,
 void populate_star_details_gpu(star_detail *stars_details, star *stars, uint32_t n_stars, 
                                const uint16_t *img_rgb, const uint16_t *img_gray,
                                uint64_t width, uint64_t npixels) {
-    for (uint32_t i = 0; i < n_stars; i++)
-        init_star_detail(&stars_details[i]);
-
     kernel_compute_star_details_planar<<<n_stars, BLOCK_SIZE_1D>>>(
         img_rgb, img_gray, width, npixels, stars, stars_details, n_stars);
     CHECK(cudaDeviceSynchronize());

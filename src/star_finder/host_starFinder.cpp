@@ -11,7 +11,7 @@ void to_grayscale_planar_cpu(const uint16_t* __restrict__ image, uint16_t* __res
         uint16_t red = image[i];
         uint16_t green = image[i + npixels];
         uint16_t blue = image[i + 2*npixels];
-        gray_image[i] = 0.299*red + 0.587*green + 0.114*blue;
+        gray_image[i] = 0.299f*red + 0.587f*green + 0.114f*blue;
     }
 }
 
@@ -337,7 +337,7 @@ void sum_brightness_planar(const uint16_t* __restrict__ input_rgb, uint64_t inpu
             sd->b_blue  += (double) input_rgb[idx];
         }
     }
-    sd->b = 0.299*sd->b_red + 0.587*sd->b_green + 0.114*sd->b_blue;
+    sd->b = 0.299f*sd->b_red + 0.587f*sd->b_green + 0.114f*sd->b_blue;
 }
 
 

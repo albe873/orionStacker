@@ -15,14 +15,14 @@ __global__ void kernel_grayscale_planar(const uint16_t *image, uint16_t *gray_im
         auto blue1 = image[idx1 + npixels2];
         auto blue2 = image[idx2 + npixels2];
 
-        gray_image[idx1] = 0.299*red1 + 0.587*green1 + 0.114*blue1;
-        gray_image[idx2] = 0.299*red2 + 0.587*green2 + 0.114*blue2;
+        gray_image[idx1] = 0.299f*red1 + 0.587f*green1 + 0.114f*blue1;
+        gray_image[idx2] = 0.299f*red2 + 0.587f*green2 + 0.114f*blue2;
     }
     else if (idx2 == npixels) {
         auto red1 = image[idx1];
         auto green1 = image[idx1 + npixels];
         auto blue1 = image[idx1 + npixels2];
-        gray_image[idx1] = 0.299*red1 + 0.587*green1 + 0.114*blue1;
+        gray_image[idx1] = 0.299f*red1 + 0.587f*green1 + 0.114f*blue1;
     }
 }
 
@@ -48,10 +48,10 @@ __global__ void kernel_grayscale_planar(const uint8_t *image, uint8_t *gray_imag
         auto blue3 = image[idx3 + npixels2];
         auto blue4 = image[idx4 + npixels2];
 
-        gray_image[idx1] = 0.299*red1 + 0.587*green1 + 0.114*blue1;
-        gray_image[idx2] = 0.299*red2 + 0.587*green2 + 0.114*blue2;
-        gray_image[idx3] = 0.299*red3 + 0.587*green3 + 0.114*blue3;
-        gray_image[idx4] = 0.299*red4 + 0.587*green4 + 0.114*blue4;
+        gray_image[idx1] = 0.299f*red1 + 0.587f*green1 + 0.114f*blue1;
+        gray_image[idx2] = 0.299f*red2 + 0.587f*green2 + 0.114f*blue2;
+        gray_image[idx3] = 0.299f*red3 + 0.587f*green3 + 0.114f*blue3;
+        gray_image[idx4] = 0.299f*red4 + 0.587f*green4 + 0.114f*blue4;
     }
     else if (idx2 == npixels) {
         auto red1 = image[idx1];

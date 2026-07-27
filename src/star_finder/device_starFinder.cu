@@ -38,7 +38,7 @@ __global__ void kernel_sum_brightness_planar(const uint16_t *input_rgb, uint64_t
         atomicAdd(&sd->b_red,   shared_red_sum);
         atomicAdd(&sd->b_green, shared_green_sum);
         atomicAdd(&sd->b_blue,  shared_blue_sum);
-        atomicAdd(&sd->b,       (0.299*shared_red_sum + 0.587*shared_green_sum + 0.114*shared_blue_sum));
+        atomicAdd(&sd->b,       (0.299f*shared_red_sum + 0.587f*shared_green_sum + 0.114f*shared_blue_sum));
     }
 }
 

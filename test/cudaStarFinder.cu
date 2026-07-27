@@ -23,6 +23,7 @@ int main(int argc, char **argv) {
     uint16_t max_star_size = 100;
     uint16_t min_star_size = 4;
     uint16_t max_stars = 1000;
+    int it = 1;
 
     static struct option long_options[] = {
         {"input-file", required_argument, 0, 'f'},
@@ -33,10 +34,11 @@ int main(int argc, char **argv) {
         {"threshold-factor", optional_argument, 0, 'T'},
         {"max-star-size", optional_argument, 0, 'M'},
         {"min-star-size", optional_argument, 0, 'm'},
+        {"it", required_argument, 0, 'i'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:T:M:m:", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "f:t:r:a:w:T:M:m:i:", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'f':
                 filename = optarg;
@@ -115,6 +117,8 @@ int main(int argc, char **argv) {
                     t_par.threshold_scale = threshold_scale;
                 }
                 break;}
+            case 'i': {
+                it = strtol(optarg, &end, 10);break;}
             default:
                 fprintf(stderr, "Invalid argument: %c\n", opt);
                 fprintf(stderr, "Usage: %s --input-file <image.fits>\n", argv[0]);
@@ -170,45 +174,41 @@ int main(int argc, char **argv) {
     printf("\n======================================\n");
     printf("Running star detection on GPU\n\n");
 
-    double t_start;
-    t_start = cpuSecond();
-
-    // 1 - Convert to grayscale
-    to_grayscale_planar_gpu(fits_data, gray_image, npixels);
-    double time_grayscale_gpu = cpuSecond() - t_start;
-    printf("  Grayscale done - time: %f\n", time_grayscale_gpu);
-    t_start = cpuSecond();
-
-    // 2 - Compute threshold
-    compute_threshold_gpu(gray_image, threshold_image, width, height, t_par);
-    double time_threshold_gpu = cpuSecond() - t_start;
-    printf("  Threshold done - time: %f\n", time_threshold_gpu);
-
-    // 3 - Detect stars
-
-    // 3.1 - Allocate memory for the stars info
+    double t_start, time_grayscale_gpu = 0, time_threshold_gpu = 0, time_detect_stars_gpu = 0, time_populate_star_details_gpu = 0;
     star *d_stars = nullptr;
     CHECK(cudaMallocManaged(&d_stars, max_stars * sizeof(star)));
     CHECK(cudaMemPrefetchAsync(d_stars, max_stars * sizeof(star), devLoc, 0));
-
     uint32_t *d_num_stars = nullptr;
     CHECK(cudaMallocManaged(&d_num_stars, sizeof(uint32_t)));
-    
-    // 3.2 - Detect
-    t_start = cpuSecond();
-    detect_stars_gpu(threshold_image, width, height, max_star_size, min_star_size, d_stars, d_num_stars, max_stars);
-    double time_detect_stars_gpu = cpuSecond() - t_start;
-    printf("  Star detection done - time: %f\n", time_detect_stars_gpu);
-
-    // 4 - Star details
-
     star_detail *stars_details = nullptr;
-    CHECK(cudaMallocManaged(&stars_details, *d_num_stars * sizeof(star_detail)));
+    CHECK(cudaMallocManaged(&stars_details, max_stars * sizeof(star_detail)));
+    CHECK(cudaMemPrefetchAsync(stars_details, max_stars * sizeof(star_detail), devLoc, 0));
 
-    t_start = cpuSecond();
-    populate_star_details_gpu(stars_details, d_stars, *d_num_stars, fits_data, gray_image, width, npixels);
-    double time_populate_star_details_gpu = cpuSecond() - t_start;
-    printf("  Star details population done - time: %f\n", time_populate_star_details_gpu);
+    for (int i = 0; i < it; i++) {
+        // 1 - Convert to grayscale
+        t_start = cpuSecond();
+        to_grayscale_planar_gpu(fits_data, gray_image, npixels);
+        time_grayscale_gpu += cpuSecond() - t_start;
+        if (i==0) printf("  Grayscale done - time: %f\n", time_grayscale_gpu);
+
+        // 2 - Compute threshold
+        t_start = cpuSecond();
+        compute_threshold_gpu(gray_image, threshold_image, width, height, t_par);
+        time_threshold_gpu += cpuSecond() - t_start;
+        if (i==0) printf("  Threshold done - time: %f\n", time_threshold_gpu);
+
+        // 3 - Detect stars
+        t_start = cpuSecond();
+        detect_stars_gpu(threshold_image, width, height, max_star_size, min_star_size, d_stars, d_num_stars, max_stars);
+        time_detect_stars_gpu += cpuSecond() - t_start;
+        if (i==0) printf("  Star detection done - time: %f\n", time_detect_stars_gpu);
+
+        // 4 - Star details
+        t_start = cpuSecond();
+        populate_star_details_gpu(stars_details, d_stars, *d_num_stars, fits_data, gray_image, width, npixels);
+        time_populate_star_details_gpu += cpuSecond() - t_start;
+        if (i==0) printf("  Star details population done - time: %f\n", time_populate_star_details_gpu);
+    }
 
     // ==============================================
     // CPU part
@@ -222,33 +222,36 @@ int main(int argc, char **argv) {
     CHECK(cudaMemPrefetchAsync(fits_data, totpixels * sizeof(uint16_t), make_prefetch_host_arg(), 0));
     CHECK(cudaDeviceSynchronize());
 
-    // 1 - grayscale
-    t_start = cpuSecond();
-    to_grayscale_planar_cpu(fits_data, gray_image_cpu, npixels);
-    double time_grayscale_cpu = cpuSecond() - t_start;
-    printf("  Grayscale done - time: %f\n", time_grayscale_cpu);
-
-    // 2 - threshold
-    t_start = cpuSecond();
-    compute_threshold_cpu(gray_image_cpu, threshold_image_cpu, width, height, t_par);
-    double time_threshold_cpu = cpuSecond() - t_start;
-    printf("  Threshold done - time: %f\n", time_threshold_cpu);
-    
-    // 3 - detection
+    double time_grayscale_cpu = 0, time_threshold_cpu = 0, time_detect_stars_cpu = 0, time_populate_star_details_cpu = 0;
     star *stars_cpu = new star[max_stars];
+    star_detail *stars_details_cpu = new star_detail[max_stars];
     uint32_t num_stars_cpu;
-    t_start = cpuSecond();
-    detect_stars_cpu(threshold_image_cpu, width, height, max_star_size, min_star_size, stars_cpu, num_stars_cpu, max_stars);
-    double time_detect_stars_cpu = cpuSecond() - t_start;
-    printf("  Star detection done - time: %f\n", time_detect_stars_cpu);
 
-    // 4 - details
-    star_detail *stars_details_cpu = new star_detail[num_stars_cpu];
-    t_start = cpuSecond();
-    populate_star_details(stars_details_cpu, stars_cpu, num_stars_cpu, fits_data, gray_image_cpu, width, npixels);
-    double time_populate_star_details_cpu = cpuSecond() - t_start;
-    printf("  Star details population on CPU done - time: %f\n", time_populate_star_details_cpu);
+    for (int i = 0; i < it; i++) {
+        // 1 - grayscale
+        t_start = cpuSecond();
+        to_grayscale_planar_cpu(fits_data, gray_image_cpu, npixels);
+        time_grayscale_cpu += cpuSecond() - t_start;
+        if (i==0) printf("  Grayscale done - time: %f\n", time_grayscale_cpu);
 
+        // 2 - threshold
+        t_start = cpuSecond();
+        compute_threshold_cpu(gray_image_cpu, threshold_image_cpu, width, height, t_par);
+        time_threshold_cpu += cpuSecond() - t_start;
+        if (i==0) printf("  Threshold done - time: %f\n", time_threshold_cpu);
+        
+        // 3 - detection
+        t_start = cpuSecond();
+        detect_stars_cpu(threshold_image_cpu, width, height, max_star_size, min_star_size, stars_cpu, num_stars_cpu, max_stars);
+        time_detect_stars_cpu += cpuSecond() - t_start;
+        if (i==0) printf("  Star detection done - time: %f\n", time_detect_stars_cpu);
+
+        // 4 - details
+        t_start = cpuSecond();
+        populate_star_details(stars_details_cpu, stars_cpu, num_stars_cpu, fits_data, gray_image_cpu, width, npixels);
+        time_populate_star_details_cpu += cpuSecond() - t_start;
+        if (i==0) printf("  Star details population on CPU done - time: %f\n", time_populate_star_details_cpu);
+    }
 
     // ====================================================
     // Results comparaison
@@ -344,21 +347,21 @@ int main(int argc, char **argv) {
     printf("Performance comparaison\n\n");
 
     printf("  GPU Grayscale time: %f s,\t CPU Grayscale time: %f s,\t speedup: %f x\n", 
-        time_grayscale_gpu, time_grayscale_cpu, time_grayscale_cpu / time_grayscale_gpu);
+        time_grayscale_gpu/it, time_grayscale_cpu/it, time_grayscale_cpu / time_grayscale_gpu);
     
     printf("  GPU Threshold time: %f s,\t CPU Threshold time: %f s,\t speedup: %f x\n", 
-        time_threshold_gpu, time_threshold_cpu, time_threshold_cpu / time_threshold_gpu);
+        time_threshold_gpu/it, time_threshold_cpu/it, time_threshold_cpu / time_threshold_gpu);
     
     printf("  GPU Star detection time: %f s,\t CPU Star detection time: %f s,\t speedup: %f x\n", 
-        time_detect_stars_gpu, time_detect_stars_cpu, time_detect_stars_cpu / time_detect_stars_gpu);
+        time_detect_stars_gpu/it, time_detect_stars_cpu/it, time_detect_stars_cpu / time_detect_stars_gpu);
     
     printf("  GPU Star details time: %f s,\t CPU Star details time: %f s,\t speedup: %f x\n", 
-        time_populate_star_details_gpu, time_populate_star_details_cpu, time_populate_star_details_cpu / time_populate_star_details_gpu);
+        time_populate_star_details_gpu/it, time_populate_star_details_cpu/it, time_populate_star_details_cpu / time_populate_star_details_gpu);
     
     double total_time_cpu = time_grayscale_cpu + time_threshold_cpu + time_detect_stars_cpu + time_populate_star_details_cpu;
     double total_time_gpu = time_grayscale_gpu + time_threshold_gpu + time_detect_stars_gpu + time_populate_star_details_gpu;
     printf("\n  Total GPU time: %f s,\t\t Total CPU time: %f s,\t\t speedup: %f x\n", 
-        total_time_gpu, total_time_cpu, total_time_cpu / total_time_gpu);
+        total_time_gpu/it, total_time_cpu/it, total_time_cpu / total_time_gpu);
 
 
 

@@ -1,29 +1,15 @@
-#include "cuda_runtime.h"
-#include "fits_api.h"
-#include "cuda_check.h"
-#include "debayer.h"
+#include "cuda_helper.hh"
+#include "fits_helper.hh"
+#include "common.hh"
+
+#include "debayer.hh"
 
 #include <stdio.h>
-#include <dirent.h>
-#include <string.h>
-#include <ctime>
 #include <getopt.h>
-
-/*  --- NVCC compiler for NVIDIA CUDA -
---  to compile for cuda, use the following command
-    make -C build                                       (to do in /orionStacker)
-*/
-
-double cpuSecond() {
-    struct timespec ts;
-    timespec_get(&ts, TIME_UTC);
-    return ((double)ts.tv_sec + (double)ts.tv_nsec * 1.e-9);
-}
 
 int main(int argc, char **argv) {
     const char *in_dir = NULL;
     const char *out_dir = ".";
-    const char *file_name = "debayered";
 
     int opt, option_index = 0;
     static struct option long_options[] = {
@@ -54,102 +40,111 @@ int main(int argc, char **argv) {
     cudaDeviceProp deviceProp;
     CHECK(cudaGetDeviceProperties(&deviceProp, dev));
     CHECK(cudaSetDevice(dev));
-    cudaMemLocation devLoc;
-    devLoc.id = dev;
-    devLoc.type = cudaMemLocationTypeDevice;
+    PrefetchDeviceArg devLoc = make_prefetch_device_arg(dev);
+
+    // =========================
+    printf("\n==========================\n");
+    printf("Reading input dir\n");
 
     // Controlla file nella directory
-    DIR *dir = opendir(in_dir);
-    if (!dir) { perror("opendir"); return 1; }
-
-    struct dirent *entry;
     long width=0, height=0, n_chan=0;
-    int status=0;
     int image_count=0;
 
-    // Conta e misura le immagini
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_type != DT_REG) continue;
-
-        if (strstr(entry->d_name, ".fits") || strstr(entry->d_name, ".fit")) {
-            char path[1024];
-            snprintf(path, sizeof(path), "%s/%s", in_dir, entry->d_name);
-
-            fitsfile *fptr = nullptr;
-            open_fits(path, &fptr);
-            long w,h,n;
-            get_image_dimensions(fptr, &w,&h,&n);
-            if (n != 1) {
-                fprintf(stderr,"Skipping %s: expected 1 channel\n", path);
-                fits_close_file(fptr,&status);
-                continue;
-            }
-            if (image_count == 0) { width=w; height=h; n_chan=n; }
-            else if (w != width || h != height) {
-                fprintf(stderr,"Skipping %s: dimensions mismatch\n", path);
-                fits_close_file(fptr,&status);
-                continue;
-            }
-            fits_close_file(fptr,&status);
-            image_count++;
-        }
+    if (check_directory(in_dir, &image_count, &width, &height, &n_chan, 1) != 0) {
+        return 1;
     }
-    closedir(dir);
 
-    if (image_count == 0) { fprintf(stderr,"No valid images\n"); return 1; }
-    printf("Found %d images\n", image_count);
-
-    u_int64_t npixels = width*height;
+    uint64_t npixels = width*height;
 
     // Alloca memoria continua
-    u_int16_t *gray_all = nullptr;
-    u_int16_t *rgb_all  = nullptr;
-    CHECK(cudaMallocManaged(&gray_all, npixels*image_count*sizeof(u_int16_t)));
-    CHECK(cudaMallocManaged(&rgb_all,  npixels*3*image_count*sizeof(u_int16_t)));
+    uint16_t *gray_all = nullptr;
+    uint16_t *rgb_all  = nullptr;
+    CHECK(cudaMallocManaged(&gray_all, npixels*image_count*sizeof(uint16_t)));
+    CHECK(cudaMallocManaged(&rgb_all,  npixels*3*image_count*sizeof(uint16_t)));
+    CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(uint16_t), devLoc, 0));
 
     // Rileggi le immagini e copia in memoria
-    dir = opendir(in_dir);
-    if (!dir) { perror("opendir"); return 1; }
-
-    int idx=0;
-    while ((entry = readdir(dir)) != NULL && idx<image_count) {
-        if (entry->d_type != DT_REG) continue;
-        if (!(strstr(entry->d_name, ".fits") || strstr(entry->d_name, ".fit"))) continue;
-
-        char path[1024];
-        snprintf(path, sizeof(path), "%s/%s", in_dir, entry->d_name);
-
-        fitsfile *fptr = nullptr;
-        open_fits(path, &fptr);
-        get_fits_data(fptr, npixels, gray_all + idx*npixels);
-        fits_close_file(fptr,&status);
-
-        CHECK(cudaMemPrefetchAsync(gray_all + idx*npixels, npixels*sizeof(u_int16_t), devLoc, 0));
-        idx++;
+    if (load_images_to_memory_prefetch(in_dir, gray_all, width, height, n_chan, image_count, dev) != 0) {
+        fprintf(stderr, "Error loading images\n");
+        return 1;
     }
-    closedir(dir);
 
-    CHECK(cudaMemPrefetchAsync(rgb_all, npixels*3*image_count*sizeof(u_int16_t), devLoc, 0));
+    printf("  Loaded %d images of size %ldx%ld\n", image_count, width, height);
 
-    // Esegui kernel
+    // ==============================================
+    // GPU
+    printf("\n==========================\n");
+    printf("GPU\n");
 
     double t_start = cpuSecond();
-    //demosaic_bilinear_rggb_kernel<<<grid_size, block_size>>>(gray_all,rgb_all,width,height,image_count);
-    demosaic_mhc_rggb(gray_all, rgb_all, width, height, image_count);
-    double t_elapsed = cpuSecond()-t_start;
-    printf("GPU debayer time: %f s\n", t_elapsed);
+    demosaic_mhc_rggb_gpu(gray_all, rgb_all, width, height, image_count);
+    double time_gpu = cpuSecond()-t_start;
+    printf("  debayer done - time: %f s\n", time_gpu);
 
-    // Salva immagini RGB
+    // ===============================================
+    // Saving the images
+    printf("\n==========================\n");
+    printf("Saving the images\n");
     for (int i = 0; i < image_count; i++) {
         char base_name[128];
         snprintf(base_name, sizeof(base_name), "debayered_%03d", i + 1);
         save_image_fits(out_dir, base_name, rgb_all + i * npixels * 3, width, height, 3);
     }
 
+    // ==============================
+    // CPU
+    printf("\n==========================\n");
+    printf("CPU\n");
+
+    CHECK(cudaMemPrefetchAsync(gray_all, npixels*image_count*sizeof(uint16_t), make_prefetch_host_arg(), 0));
+    CHECK(cudaDeviceSynchronize());
+    
+    // alloca memoria per il risultato CPU
+    uint16_t *rgb_cpu = (uint16_t *)malloc(npixels*3*image_count*sizeof(uint16_t));
+    if (!rgb_cpu) {
+        fprintf(stderr,"Failed to allocate CPU memory\n");
+        exit(1);
+    }
+
+
+    t_start = cpuSecond();
+    demosaic_mhc_rggb_cpu(gray_all, rgb_cpu, width, height, image_count);
+    double time_cpu = cpuSecond()-t_start;
+    printf("  debayer done - time: %f s\n", time_cpu);
+
+    // ================================
+    // Comparaison
+    printf("\n==========================\n");
+    printf("Comparing results\n");
+    long errors = 0;
+    for (int i = 0; i < image_count; i++) {
+        for (uint64_t p = 0; p < npixels*3; p++) {
+            auto gpu_val = rgb_all[i*npixels*3 + p];
+            auto cpu_val = rgb_cpu[i*npixels*3 + p];
+            if (gpu_val != cpu_val) {
+                errors++;
+            }
+        }
+    }
+    if (errors == 0) {
+        printf("  GPU and CPU results match!\n");
+    } else {
+        printf("  GPU and CPU results differ: %ld errors\n", errors);
+    }
+
+    // ==================================
+    // Performance
+    printf("\n==========================\n");
+    printf("Performance:\n");
+    double speedup = time_cpu / time_gpu;
+    printf("  CPU time: %f s,\tGPU time: %f s,\tSpeedup: %f x\n", time_cpu, time_gpu, speedup);
+
+
 
     // Libera memoria
     CHECK(cudaFree(gray_all));
     CHECK(cudaFree(rgb_all));
+    free(rgb_cpu);
     CHECK(cudaDeviceReset());
 
     return 0;

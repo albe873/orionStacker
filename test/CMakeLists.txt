@@ -1,38 +1,46 @@
-# Debayer
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+
+
+# ===== Debayer =====
 if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
     add_cuda_hip_executable(cudaDebayerTest cudaDebayerTest.cu)
     target_link_libraries(cudaDebayerTest   common debayer cfitsio m)
 endif()
 
-# calibration
+# ===== calibration =====
 if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
     add_cuda_hip_executable(cudaCalibration cudaCalibration.cu)
     target_link_libraries(cudaCalibration   common calibration cfitsio m)
 endif()
 
-# Stacker
-add_executable(CPUStackerAlfaSigma CPUStackerAlfaSigma.c)
-target_link_libraries(CPUStackerAlfaSigma   common stacker cfitsio m)
-
+# ===== Stacker =====
 if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
     add_cuda_hip_executable(cudaStackerAlfaSigma cudaStackerAlfaSigma.cu)
     target_link_libraries(cudaStackerAlfaSigma  common stacker cfitsio m)
 endif()
 
-# starFinder
-add_executable(CPUStarFinder CPUStarFinder.c)
-target_link_libraries(CPUStarFinder   common starFinder cfitsio m)
-
+# ===== starFinder =====
 if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
     add_cuda_hip_executable(cudaStarFinder cudaStarFinder.cu)
-    target_link_libraries(cudaStarFinder  common starFinder cfitsio m)
+    target_link_libraries(cudaStarFinder  common starFinder cfitsio m ${OpenCV_LIBS})
 endif()
 
-# features
+# ===== aligner =====
+if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
+    add_cuda_hip_executable(cudaAligner cudaAligner.cu)
+    target_link_libraries(cudaAligner  common starFinder debayer cfitsio m ${OpenCV_LIBS})
+endif()
 
-# Find OpenCV with xfeatures2d for SURF support
-find_package( OpenCV REQUIRED COMPONENTS core imgproc imgcodecs highgui features2d calib3d )
-include_directories( ${OpenCV_INCLUDE_DIRS} )
-
+# ===== features =====
 add_executable(features features.cpp)
 target_link_libraries(features   ${OpenCV_LIBS})
+
+# ===== testAll =====
+if (CUDAToolkit_FOUND AND NOT CPU_ONLY)
+    add_cuda_hip_executable(testAll testAll.cu)
+    target_link_libraries(testAll common calibration debayer starFinder stacker cfitsio m)
+endif()
+
+# ===== testAll CPU =====
+add_executable(testAll_cpu testAll.cpp)
+target_link_libraries(testAll_cpu common calibration debayer starFinder stacker cfitsio m ${OpenCV_LIBS})

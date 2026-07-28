@@ -1,7 +1,7 @@
-#ifndef MHC_APPLY_H
-#define MHC_APPLY_H
+#ifndef MHC_APPLY_CUH
+#define MHC_APPLY_CUH
 
-#include "MHC_filters.h"
+#include "MHC_filters.cuh"
 
 // Funzione inline per clamp
 __device__ inline int clamp_index(int v, int lo, int hi) {
@@ -17,7 +17,7 @@ __device__ inline int clamp_index(int v, int lo, int hi) {
 // Ritorna il valore filtrato (float).
 // ============================================================================
 __device__ inline float apply_kernel_5x5(
-    const u_int16_t *gray,
+    const uint16_t* __restrict__ gray,
     int width,
     int height,
     int x,

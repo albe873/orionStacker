@@ -10,10 +10,12 @@
 #define BLOCK_SIZE_2D   BLOCK_DIM_2D*BLOCK_DIM_2D
 #define WARP_SIZE       32
 
+#define FULL_WARP_MASK ~0ULL
+
 // Shared memory reduction for double (tree-based, no atomics)
 __inline__ __device__ double warp_reduce_sum(double val) {
     for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2)
-        val += __shfl_xor_sync(0xffffffff, val, offset);
+        val += __shfl_xor_sync(FULL_WARP_MASK, val, offset);
     return val;
 }
 

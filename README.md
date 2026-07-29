@@ -112,4 +112,4 @@ cd orionStacker/build/test
 
 ![Pipeline](/pipeline.jpg)
 
-## Screenshot / Risultati
+## Screenshot / Results

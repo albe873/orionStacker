@@ -11,7 +11,7 @@ orionStacker/
 ├── .devcontainer/     # Configuration for container-based development (Dockerfile)
 ├── src/               # Main source code
 │   ├── calibration/   # Image calibration (host/CPU and device/CUDA versions)
-│   ├── common/        # Shared utilities: FITS file handling, CUDA helpers, stb_image libraries
+│   ├── common/        # Shared utilities: FITS file handling, CUDA helpers
 │   ├── debayer/       # Image debayering (MHC filters)
 │   ├── gui/           # Application graphical interface
 │   ├── stacker/       # Implementation of the Alpha-Sigma stacking algorithm
@@ -30,11 +30,13 @@ The project mainly handles calibration of frames obtained directly from the astr
 - **Input format:** 16-bit unsigned FIT images.
 - **Output format:** 16-bit unsigned FIT images.
 
+More format will be supported in the future.
+
 **Required frame types:**
 
 - **Bias frames:** used to compute the master bias (average of the bias frames)
 - **Dark frames:** used to compute the master dark
-- **Flat frames:** used, together with the master bias, to compute the master flat
+- **Flat frames:** used to compute the master flat
 - **Light frames:** corrected using the master bias, master dark, and master flat
 
 ## Building
@@ -46,6 +48,10 @@ sudo apt update
 sudo apt install -y build-essential cmake libcfitsio-dev libopencv-dev
 ```
 
+**Other dependencies:** cuda is not strictly needed but necessary for gpu-accelerated
+code and for all test files. If cuda is detected, the project will automatically build
+with cuda support
+
 **Build with CMake**
 
 ```bash
@@ -53,6 +59,15 @@ git clone --branch dev https://github.com/albe873/orionStacker.git
 cd orionStacker
 mkdir build && cd build
 cmake ..
+cmake --build . -j$(nproc)
+```
+
+**ROCM support:** is it possible to build the project with rocm. We suggest to use the devcontainer as the simplest solution to have all dependencies.
+
+In the container execute:
+```bash
+mkdir build && cd build
+cmake -DROCM=ON ..
 cmake --build . -j$(nproc)
 ```
 

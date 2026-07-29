@@ -1,52 +1,52 @@
 # ORIONStacker
 
-Programma di stacking astrofotografico che sfrutta il calcolo parallelo delle GPU tramite CUDA C per accelerare l'elaborazione.
+An astrophotography stacking program that leverages parallel GPU computing through CUDA C to accelerate processing.
 
-Il programma è stato sviluppato per eseguire lo stacking di immagini FITS mediante l'algoritmo Alfa-Sigma, con l'obiettivo di migliorare la qualità dell'immagine finale, mettendo in evidenza il segnale dell'oggetto fotografato e riducendo il rumore presente nei singoli scatti. Per queste caratteristiche, è particolarmente utile nell'astrofotografia e nell'elaborazione di immagini astronomiche, dove sono disponibili numerose acquisizioni dello stesso soggetto affette da differenti livelli di rumore e disturbi.
+The program was developed to perform stacking of FITS images using the Alpha-Sigma algorithm, with the goal of improving the quality of the final image by enhancing the signal of the photographed object and reducing the noise present in the individual shots. Thanks to these features, it is particularly useful in astrophotography and astronomical image processing, where numerous acquisitions of the same subject affected by different levels of noise and disturbance are available.
 
-## Struttura del progetto
+## Project structure
 
 ```
 orionStacker/
-├── .devcontainer/     # Configurazione per lo sviluppo in container (Dockerfile)
-├── src/               # Codice sorgente principale
-│   ├── calibration/   # Calibrazione delle immagini (versioni host/CPU e device/CUDA)
-│   ├── common/        # Utilità condivise: gestione file FITS, helper CUDA, librerie stb_image
-│   ├── debayer/       # Debayering delle immagini (filtri MHC)
-│   ├── gui/           # Interfaccia grafica dell'applicazione
-│   ├── stacker/       # Implementazione dell'algoritmo di stacking Alfa-Sigma
-│   ├── star_finder/   # Rilevamento delle stelle (thresholding, Otsu, warp, descrittori)
-│   └── utils/         # Piccoli tool da linea di comando (es. lettura metadati FITS, verifica risultati)
-├── test/              # Test e benchmark dei vari moduli (stacker, star finder, calibrazione, debayer, aligner)
-├── third_party/       # Dipendenze esterne (es. ADE, OpenCV) incluse come submodule, con script di build
-├── CMakeLists.txt     # Configurazione principale per la build con CMake
+├── .devcontainer/     # Configuration for container-based development (Dockerfile)
+├── src/               # Main source code
+│   ├── calibration/   # Image calibration (host/CPU and device/CUDA versions)
+│   ├── common/        # Shared utilities: FITS file handling, CUDA helpers, stb_image libraries
+│   ├── debayer/       # Image debayering (MHC filters)
+│   ├── gui/           # Application graphical interface
+│   ├── stacker/       # Implementation of the Alpha-Sigma stacking algorithm
+│   ├── star_finder/   # Star detection (thresholding, Otsu, warp, descriptors)
+│   └── utils/         # Small command-line tools (e.g. FITS metadata reading, result verification)
+├── test/              # Tests and benchmarks for the various modules (stacker, star finder, calibration, debayer, aligner)
+├── third_party/       # External dependencies (e.g. ADE, OpenCV) included as submodules, with build scripts
+├── CMakeLists.txt     # Main configuration for building with CMake
 └── README.md
 ```
 
-Il progetto si occupa principalmente di calibrazione dei frame ottenuti direttamente dall'astro camera, debayering dei light calibrati, allineamento tramite rilevamento delle stelle nelle immagini ed infine stacking del risultato finale.
+The project mainly handles calibration of frames obtained directly from the astro camera, debayering of the calibrated light frames, alignment through star detection in the images, and finally stacking of the final result.
 
-## Dati
+## Data
 
-- **Formato input:** immagini FIT a 16 bit unsigned.
-- **Formato output:** immagini FIT a 16 bit unsigned.
+- **Input format:** 16-bit unsigned FIT images.
+- **Output format:** 16-bit unsigned FIT images.
 
-**Tipi di frame richiesti:**
+**Required frame types:**
 
-- **Bias frames:** usati per calcolare il master bias (media dei bias)
-- **Dark frames:** usati per calcolare il master dark
-- **Flat frames:** usati, insieme al master bias, per calcolare il master flat
-- **Light frames:** vengono corrette usando master bias, master dark e master flat
+- **Bias frames:** used to compute the master bias (average of the bias frames)
+- **Dark frames:** used to compute the master dark
+- **Flat frames:** used, together with the master bias, to compute the master flat
+- **Light frames:** corrected using the master bias, master dark, and master flat
 
-## Compilazione
+## Building
 
-**Dipendenze necessarie:** il progetto usa CMake + OpenCV + cfitsio
+**Required dependencies:** the project uses CMake + OpenCV + cfitsio
 
 ```bash
 sudo apt update
 sudo apt install -y build-essential cmake libcfitsio-dev libopencv-dev
 ```
 
-**Build con CMake**
+**Build with CMake**
 
 ```bash
 git clone --branch dev https://github.com/albe873/orionStacker.git
@@ -56,7 +56,7 @@ cmake ..
 cmake --build . -j$(nproc)
 ```
 
-**Esecuzione dei vari componenti**
+**Running the various components**
 
 ```bash
 cd orionStacker/build/test
@@ -65,50 +65,50 @@ cd orionStacker/build/test
 *CudaCalibration*
 
 ```bash
-./cudaCalibration --light /percorso/light/ --bias /percorso/bias/ --dark /percorso/dark/ --flat /percorso/flat/ --output /percorso/output/
-./cudaCalibration --base-dir /percorso/ --output /percorso/output/
+./cudaCalibration --light /path/light/ --bias /path/bias/ --dark /path/dark/ --flat /path/flat/ --output /path/output/
+./cudaCalibration --base-dir /path/ --output /path/output/
 ```
 
 *CudaDebayering*
 
 ```bash
-./cudaDebayerTest --input /percorso/raw_bayer/ --output /percorso/output/
+./cudaDebayerTest --input /path/raw_bayer/ --output /path/output/
 ```
 
 *CudaAlligner*
 
 ```bash
-./cudaAligner --input-file1 /percorso/img1.fits --input-file2 /percorso/img2.fits --descriptor-neighbors 2
+./cudaAligner --input-file1 /path/img1.fits --input-file2 /path/img2.fits --descriptor-neighbors 2
 ```
 
 *CudaStackerAlfaSigma*
 
 ```bash
-./cudaStackerAlfaSigma --input-directory /percorso/calibrated_lights/ --output-directory /percorso/output/ --file-name stack --kappa 3.0 --iterations 5
+./cudaStackerAlfaSigma --input-directory /path/calibrated_lights/ --output-directory /path/output/ --file-name stack --kappa 3.0 --iterations 5
 ```
 
 *CudaStarFinder*
 
 ```bash
-./cudaStarFinder --input-file /percorso/immagine.fits --threshold-algorithm adaptive --window-size 201 --max-star-size 100 --min-star-size 4
+./cudaStarFinder --input-file /path/image.fits --threshold-algorithm adaptive --window-size 201 --max-star-size 100 --min-star-size 4
 ```
 
-**Esecuzione completa**
+**Full run**
 
 ```bash
-./testAll --light /percorso/light/ --bias /percorso/bias/ --dark /percorso/dark/ --flat /percorso/flat/ --output /percorso/output/
-./testAll --base-dir /percorso/ --output /percorso/output/
+./testAll --light /path/light/ --bias /path/bias/ --dark /path/dark/ --flat /path/flat/ --output /path/output/
+./testAll --base-dir /path/ --output /path/output/
 ```
 
-> **Work in progress:** la pipeline è già attiva, la GUI la sta raggiungendo.
+> **Work in progress:** the pipeline is already active, the GUI is catching up.
 
-## Pipeline funzionamento
+## Pipeline workflow
 
-1. Input calibration frames e light frames
-2. Calibrazione dei light
+1. Input calibration frames and light frames
+2. Calibration of the light frames
 3. Debayering
-4. Allineamento light calibrati
-5. Stacking light calibrati
+4. Alignment of calibrated light frames
+5. Stacking of calibrated light frames
 
 ![Pipeline](/pipeline.jpg)
 

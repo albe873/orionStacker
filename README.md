@@ -66,6 +66,9 @@ cd orionStacker/build/test
 
 ```bash
 ./cudaCalibration --light /path/light/ --bias /path/bias/ --dark /path/dark/ --flat /path/flat/ --output /path/output/
+```
+or 
+```bash
 ./cudaCalibration --base-dir /path/ --output /path/output/
 ```
 
@@ -97,6 +100,9 @@ cd orionStacker/build/test
 
 ```bash
 ./testAll --light /path/light/ --bias /path/bias/ --dark /path/dark/ --flat /path/flat/ --output /path/output/
+```
+or 
+```bash
 ./testAll --base-dir /path/ --output /path/output/
 ```
 

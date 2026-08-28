@@ -24,7 +24,7 @@ __global__ void kernel_calculate_histogram(const uint16_t *image, uint64_t npixe
     atomicAdd(&hist[v], 1);
 }
 
-__global__ void kernel_sum_and_normalize_histograms(uint32_t *histograms, uint32_t *output, double npixels) {
+__global__ void kernel_sum_and_normalize_histograms(uint32_t *histograms, double *output, double npixels) {
     int t = (int)(blockIdx.x * blockDim.x + threadIdx.x);
     if (t >= OTSU_HISTOGRAM_SIZE)
         return;
@@ -32,7 +32,7 @@ __global__ void kernel_sum_and_normalize_histograms(uint32_t *histograms, uint32
     uint32_t sum = 0;
     for (int p = 0; p < HIST_PRIVATES; p++)
         sum += histograms[p * OTSU_HISTOGRAM_SIZE + t];
-    output[t] = sum / npixels;
+    output[t] = (double)sum / npixels;
 }
 
 

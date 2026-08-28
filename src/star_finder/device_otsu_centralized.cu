@@ -298,10 +298,12 @@ inline void calculate_histogram_gpu(const uint16_t *d_image, uint64_t npixels,
     // 1. privatized histogram kernel
     int blocks = (int)((npixels + OTSU_THREADS_PER_BLOCK - 1) / OTSU_THREADS_PER_BLOCK);
     kernel_calculate_histogram<<<blocks, OTSU_THREADS_PER_BLOCK>>>(d_image, npixels, d_privates);
+    CHECK(cudaDeviceSynchronize());
 
     // 2. sum private copies into one
     int sb = (OTSU_HISTOGRAM_SIZE + OTSU_THREADS_PER_BLOCK - 1) / OTSU_THREADS_PER_BLOCK;
     kernel_sum_histograms<<<sb, OTSU_THREADS_PER_BLOCK>>>(d_privates, d_hist_uint32);
+    CHECK(cudaDeviceSynchronize());
 
     // 3. normalize on device
     kernel_normalize_histogram<<<sb, OTSU_THREADS_PER_BLOCK>>>(d_hist_uint32, d_hist_norm, npixels);

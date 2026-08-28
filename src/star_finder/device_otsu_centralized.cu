@@ -24,8 +24,7 @@ __global__ void kernel_calculate_histogram(const uint16_t *image, uint64_t npixe
     atomicAdd(&hist[v], 1);
 }
 
-// Sum the HIST_PRIVATES private copies into one histogram
-__global__ void kernel_sum_histograms(uint32_t *histograms, uint32_t *output) {
+__global__ void kernel_sum_and_normalize_histograms(uint32_t *histograms, uint32_t *output, double npixels) {
     int t = (int)(blockIdx.x * blockDim.x + threadIdx.x);
     if (t >= OTSU_HISTOGRAM_SIZE)
         return;
@@ -33,16 +32,9 @@ __global__ void kernel_sum_histograms(uint32_t *histograms, uint32_t *output) {
     uint32_t sum = 0;
     for (int p = 0; p < HIST_PRIVATES; p++)
         sum += histograms[p * OTSU_HISTOGRAM_SIZE + t];
-    output[t] = sum;
+    output[t] = sum / npixels;
 }
 
-// Normalize histogram: histogram[i] /= npixels
-__global__ void kernel_normalize_histogram(uint32_t *hist_uint32, double *hist_norm, double npixels) {
-    int t = (int)(blockIdx.x * blockDim.x + threadIdx.x);
-    if (t >= OTSU_HISTOGRAM_SIZE)
-        return;
-    hist_norm[t] = (double)hist_uint32[t] / npixels;
-}
 
 // ---------------------------------------------------------------------------
 // Prefix scan
@@ -283,14 +275,11 @@ __global__ void kernel_otsu_centralized_threshold(const uint16_t *image,
 
 // Returns a device pointer to the normalized histogram (caller must free)
 inline void calculate_histogram_gpu(const uint16_t *d_image, uint64_t npixels,
-                                     uint32_t **d_out_hist_uint32, double **d_out_hist_norm) {
+                                     double **d_out_hist_norm) {
     // 0. allocate HIST_PRIVATES private copies + 1 output copy for uint32 + 1 normalized hist
     uint32_t *d_privates;
     CHECK(cudaMalloc(&d_privates, sizeof(uint32_t) * OTSU_HISTOGRAM_SIZE * HIST_PRIVATES));
     CHECK(cudaMemset(d_privates, 0, sizeof(uint32_t) * OTSU_HISTOGRAM_SIZE * HIST_PRIVATES));
-
-    uint32_t *d_hist_uint32;
-    CHECK(cudaMalloc(&d_hist_uint32, sizeof(uint32_t) * OTSU_HISTOGRAM_SIZE));
 
     double *d_hist_norm;
     CHECK(cudaMalloc(&d_hist_norm, sizeof(double) * OTSU_HISTOGRAM_SIZE));
@@ -300,19 +289,14 @@ inline void calculate_histogram_gpu(const uint16_t *d_image, uint64_t npixels,
     kernel_calculate_histogram<<<blocks, OTSU_THREADS_PER_BLOCK>>>(d_image, npixels, d_privates);
     CHECK(cudaDeviceSynchronize());
 
-    // 2. sum private copies into one
+    // 2. sum private copies into one and normalize
     int sb = (OTSU_HISTOGRAM_SIZE + OTSU_THREADS_PER_BLOCK - 1) / OTSU_THREADS_PER_BLOCK;
-    kernel_sum_histograms<<<sb, OTSU_THREADS_PER_BLOCK>>>(d_privates, d_hist_uint32);
+    kernel_sum_and_normalize_histograms<<<sb, OTSU_THREADS_PER_BLOCK>>>(d_privates, d_hist_norm, npixels);
     CHECK(cudaDeviceSynchronize());
 
-    // 3. normalize on device
-    kernel_normalize_histogram<<<sb, OTSU_THREADS_PER_BLOCK>>>(d_hist_uint32, d_hist_norm, npixels);
-    CHECK(cudaDeviceSynchronize());
-
-    // 4. free intermediates
+    // 3. free intermediates
     CHECK(cudaFree(d_privates));
 
-    *d_out_hist_uint32 = d_hist_uint32;
     *d_out_hist_norm   = d_hist_norm;
 }
 
@@ -436,9 +420,8 @@ void otsu_centralized_threshold_gpu(const uint16_t *d_image,
     uint64_t npixels = width * height;
 
     // 1. GPU-resident histogram + normalization
-    uint32_t *d_hist_uint32;
     double *d_hist_norm;
-    calculate_histogram_gpu(d_image, npixels, &d_hist_uint32, &d_hist_norm);
+    calculate_histogram_gpu(d_image, npixels, &d_hist_norm);
 
     // 2. compute sum_all on GPU (tiny host transfer: ~256 doubles)
     double sum_all = compute_sum_all_gpu(d_hist_norm);
@@ -449,7 +432,6 @@ void otsu_centralized_threshold_gpu(const uint16_t *d_image,
     otsu_threshold *= (double)th_scale;
 
     // 4. free histogram memory
-    CHECK(cudaFree(d_hist_uint32));
     CHECK(cudaFree(d_hist_norm));
 
     // 5. global mean

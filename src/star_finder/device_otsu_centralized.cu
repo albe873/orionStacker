@@ -141,25 +141,6 @@ __global__ void kernel_calculate_mean(const uint16_t *image, uint64_t npixels, d
         partial_sums[blockIdx.x] = shared_sum[0];
 }
 
-// Block-level reduction for sum_all =  sum(i * histogram[i])
-__global__ void kernel_sum_all(const double *hist_norm, double *partial_sums) {
-    extern __shared__ double sum_all_shared[];
-    int t = (int)(blockIdx.x * blockDim.x + threadIdx.x);
-    int tid = (int)threadIdx.x;
-
-    sum_all_shared[tid] = (t < OTSU_HISTOGRAM_SIZE) ? (double)t * hist_norm[t] : 0.0;
-    __syncthreads();
-
-    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
-        if (tid < s)
-            sum_all_shared[tid] += sum_all_shared[tid + s];
-        __syncthreads();
-    }
-
-    if (tid == 0)
-        partial_sums[blockIdx.x] = sum_all_shared[0];
-}
-
 // Block-level argmax for variances
 __global__ void kernel_block_max_var(const double *variances, float2 *block_results) {
     // float2.x = max variance, float2.y = bin index
@@ -300,30 +281,8 @@ inline void calculate_histogram_gpu(const uint16_t *d_image, uint64_t npixels,
     *d_out_hist_norm   = d_hist_norm;
 }
 
-// Compute sum_all = sum(i * histogram[i])
-inline double compute_sum_all_gpu(double *d_hist_norm) {
-    int num_blocks = (OTSU_HISTOGRAM_SIZE + OTSU_THREADS_PER_BLOCK - 1) / OTSU_THREADS_PER_BLOCK;
-
-    double *d_partial;
-    CHECK(cudaMalloc(&d_partial, sizeof(double) * num_blocks));
-
-    kernel_sum_all<<<num_blocks, OTSU_THREADS_PER_BLOCK, sizeof(double) * OTSU_THREADS_PER_BLOCK>>>(
-        d_hist_norm, d_partial);
-    CHECK(cudaDeviceSynchronize());
-
-    double *h_partial = new double[num_blocks];
-    CHECK(cudaMemcpy(h_partial, d_partial, sizeof(double) * num_blocks, cudaMemcpyDeviceToHost));
-    CHECK(cudaFree(d_partial));
-
-    double sum_all = 0.0;
-    for (int i = 0; i < num_blocks; i++)
-        sum_all += h_partial[i];
-    delete[] h_partial;
-    return sum_all;
-}
-
 // Compute Otsu thresholds entirely on GPU, return threshold bin index (0..OTSU_HISTOGRAM_SIZE-1)
-inline int find_otsu_threshold_gpu(double *d_hist_norm, double sum_all) {
+inline int find_otsu_threshold_gpu(double *d_hist_norm) {
     int num_blocks = (OTSU_HISTOGRAM_SIZE + OTSU_THREADS_PER_BLOCK - 1) / OTSU_THREADS_PER_BLOCK;
 
     // Allocate prefix-scan buffers
@@ -341,6 +300,13 @@ inline int find_otsu_threshold_gpu(double *d_hist_norm, double sum_all) {
         d_hist_norm, d_prefix_w, d_prefix_sum,
         d_block_w_totals, d_block_sum_totals);
     CHECK(cudaDeviceSynchronize());
+
+    // Derive sum_all from block_sum_totals (sum of all block totals = total sum)
+    double *h_block_sum = new double[num_blocks];
+    CHECK(cudaMemcpy(h_block_sum, d_block_sum_totals, sizeof(double) * num_blocks, cudaMemcpyDeviceToHost));
+    double sum_all = 0.0;
+    for (int b = 0; b < num_blocks; b++) sum_all += h_block_sum[b];
+    delete[] h_block_sum;
 
     // 2. compute variances
     double *d_variances;
@@ -423,11 +389,8 @@ void otsu_centralized_threshold_gpu(const uint16_t *d_image,
     double *d_hist_norm;
     calculate_histogram_gpu(d_image, npixels, &d_hist_norm);
 
-    // 2. compute sum_all on GPU (tiny host transfer: ~256 doubles)
-    double sum_all = compute_sum_all_gpu(d_hist_norm);
-
-    // 3. find otsu threshold (entirely on GPU, returns single bin index)
-    int otsu_bin = find_otsu_threshold_gpu(d_hist_norm, sum_all);
+    // 2. find otsu threshold (entirely on GPU, returns single bin index)
+    int otsu_bin = find_otsu_threshold_gpu(d_hist_norm);
     double otsu_threshold = (double)otsu_bin;
     otsu_threshold *= (double)th_scale;
 

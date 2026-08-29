@@ -6,7 +6,8 @@
 
 // Constants
 #define OTSU_HISTOGRAM_SIZE  65536
-#define OTSU_THREADS_PER_BLOCK 256
+#define OTSU_THREADS_PER_BLOCK 1024
+#define BOX_FILTER_THREADS 256
 #define HIST_PRIVATES 16
 
 
@@ -170,65 +171,74 @@ __global__ void kernel_block_max_var(const double *variances, float2 *block_resu
 }
 
 // ---------------------------------------------------------------------------
-// 5.  Optimized integral-image kernels
-__global__ void kernel_integral_image_row_pass(const uint16_t *image,
-                                                    double *integral,
-                                                    uint64_t width,
-                                                    uint64_t height) {
+// Separable box filter (like CUDA samples)
+__device__ void d_boxfilter_x_uint16(const uint16_t *id, double *od, int w, int r) {
+    double scale = 1.0 / (double)((r << 1) + 1);
+    double t;
+    // left edge
+    t = (double)id[0] * (double)r;
+    for (int x = 0; x < (r + 1); x++)
+        t += (double)id[x];
+    od[0] = t * scale;
+    for (int x = 1; x < (r + 1); x++) {
+        t += (double)id[x + r];
+        t -= (double)id[0];
+        od[x] = t * scale;
+    }
+    // main loop
+    for (int x = (r + 1); x < w - r; x++) {
+        t += (double)id[x + r];
+        t -= (double)id[x - r - 1];
+        od[x] = t * scale;
+    }
+    // right edge
+    for (int x = w - r; x < w; x++) {
+        t += (double)id[w - 1];
+        t -= (double)id[x - r - 1];
+        od[x] = t * scale;
+    }
+}
+
+__device__ void d_boxfilter_y(const double *id, double *od, int w, int h, int r) {
+    double scale = 1.0 / (double)((r << 1) + 1);
+    double t;
+    // top edge
+    t = id[0] * (double)r;
+    for (int y = 0; y < (r + 1); y++)
+        t += id[y * w];
+    od[0] = t * scale;
+    for (int y = 1; y < (r + 1); y++) {
+        t += id[(y + r) * w];
+        t -= id[0];
+        od[y * w] = t * scale;
+    }
+    // main loop
+    for (int y = (r + 1); y < (h - r); y++) {
+        t += id[(y + r) * w];
+        t -= id[(y - r - 1) * w];
+        od[y * w] = t * scale;
+    }
+    // bottom edge
+    for (int y = h - r; y < h; y++) {
+        t += id[(h - 1) * w];
+        t -= id[(y - r - 1) * w];
+        od[y * w] = t * scale;
+    }
+}
+
+__global__ void kernel_boxfilter_x(const uint16_t *image, double *temp, uint64_t width, uint64_t height, int r) {
     uint64_t y = blockIdx.x * blockDim.x + threadIdx.x;
-    if (y >= height)
-        return;
-
-    uint64_t row_offset = y * width;
-    double row_sum = 0.0;
-    for (uint64_t x = 0; x < width; x++) {
-        row_sum += (double)image[row_offset + x];
-        integral[row_offset + x] = row_sum;
-    }
+    if (y >= height) return;
+    d_boxfilter_x_uint16(&image[y * width], &temp[y * width], (int)width, r);
 }
 
-__global__ void kernel_integral_image_col_pass(double *integral, uint64_t width, uint64_t height) {
+__global__ void kernel_boxfilter_y(const double *temp, double *filtered, uint64_t width, uint64_t height, int r) {
     uint64_t x = blockIdx.x * blockDim.x + threadIdx.x;
-    if (x >= width)
-        return;
-
-    double col_sum = 0.0;
-    for (uint64_t y = 0; y < height; y++) {
-        col_sum += integral[y * width + x];
-        integral[y * width + x] = col_sum;
-    }
+    if (x >= width) return;
+    d_boxfilter_y(&temp[x], &filtered[x], (int)width, (int)height, r);
 }
 
-__global__ void kernel_mean_filter_integral(const double *integral, double *temp_filtered, uint64_t width, uint64_t height, int half_window) {
-    int64_t x = blockIdx.x * blockDim.x + threadIdx.x;
-    int64_t y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= width || y >= height)
-        return;
 
-    int64_t y1 = y - half_window;
-    int64_t y2 = y + half_window;
-    int64_t x1 = x - half_window;
-    int64_t x2 = x + half_window;
-    if (y1 < 0)
-        y1 = 0;
-    if (y2 >= height)
-        y2 = height - 1;
-    if (x1 < 0)
-        x1 = 0;
-    if (x2 >= width)
-        x2 = width - 1;
-
-    double sum = integral[y2 * width + x2];
-    if (y1 > 0)
-        sum -= integral[(y1 - 1) * width + x2];
-    if (x1 > 0)
-        sum -= integral[y2 * width + (x1 - 1)];
-    if (y1 > 0 && x1 > 0)
-        sum += integral[(y1 - 1) * width + (x1 - 1)];
-
-    double count = (double)((y2 - y1 + 1) * (x2 - x1 + 1));
-    temp_filtered[y * width + x] = sum / count;
-}
 
 // ---------------------------------------------------------------------------
 // 6.  Centralized threshold kernel
@@ -394,43 +404,36 @@ void otsu_centralized_threshold_gpu(const uint16_t *d_image,
     double otsu_threshold = (double)otsu_bin;
     otsu_threshold *= (double)th_scale;
 
-    // 4. free histogram memory
+    // 2.1 free histogram memory
     CHECK(cudaFree(d_hist_norm));
 
-    // 5. global mean
+    // 3. global mean
     double global_mean = calculate_mean_gpu(d_image, npixels);
 
-    // 3. mean filter with integral optimizations
-    double *d_integral;
-    CHECK(cudaMalloc(&d_integral, sizeof(double) * npixels));
-
-    int row_blocks = (height + 255) / 256;
-    kernel_integral_image_row_pass<<<row_blocks, 256>>>(
-        d_image, d_integral, width, height);
-    CHECK(cudaDeviceSynchronize());
-
-    int col_blocks = (width + 255) / 256;
-    kernel_integral_image_col_pass<<<col_blocks, 256>>>(
-        d_integral, width, height);
-    CHECK(cudaDeviceSynchronize());
-
+    // 4. mean filter with separable box filter (like CUDA samples)
     double *d_mean_filtered;
     CHECK(cudaMalloc(&d_mean_filtered, sizeof(double) * npixels));
 
-    dim3 block_size(16, 16);
-    dim3 grid_size((width + block_size.x - 1) / block_size.x,
-                   (height + block_size.y - 1) / block_size.y);
-    kernel_mean_filter_integral<<<grid_size, block_size>>>(
-        d_integral, d_mean_filtered, width, height, (int)(window_size / 2));
+    double *d_temp;
+    CHECK(cudaMalloc(&d_temp, sizeof(double) * npixels));
+
+    int r = (int)(window_size / 2);
+    int row_blocks = (int)((height + BOX_FILTER_THREADS - 1) / BOX_FILTER_THREADS);
+    kernel_boxfilter_x<<<row_blocks, BOX_FILTER_THREADS>>>(d_image, d_temp, width, height, r);
     CHECK(cudaDeviceSynchronize());
 
-    // 4. thresholding
+    int col_blocks = (int)((width + BOX_FILTER_THREADS - 1) / BOX_FILTER_THREADS);
+    kernel_boxfilter_y<<<col_blocks, BOX_FILTER_THREADS>>>(d_temp, d_mean_filtered, width, height, r);
+    CHECK(cudaDeviceSynchronize());
+
+    CHECK(cudaFree(d_temp));
+
+    // 5. thresholding
     int blocks = (npixels + OTSU_THREADS_PER_BLOCK - 1) / OTSU_THREADS_PER_BLOCK;
     kernel_otsu_centralized_threshold<<<blocks, OTSU_THREADS_PER_BLOCK>>>(
         d_image, d_mean_filtered, d_output, npixels, global_mean, otsu_threshold);
     CHECK(cudaDeviceSynchronize());
 
-    // 5. memory cleanup
-    CHECK(cudaFree(d_integral));
+    // 5.1 memory cleanup
     CHECK(cudaFree(d_mean_filtered));
 }

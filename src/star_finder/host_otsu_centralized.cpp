@@ -56,6 +56,7 @@ inline int cpu_find_otsu_threshold(const double *histogram) {
 inline double cpu_calculate_mean(const uint16_t *image, uint64_t width, uint64_t height) {
     uint64_t npixels = width * height;
     double sum = 0.0;
+    #pragma omp parallel for reduction(+:sum)
     for (uint64_t i = 0; i < npixels; i++)
         sum += (double)image[i];
     return sum / (double)npixels;
@@ -141,6 +142,7 @@ void cpu_otsu_centralized_threshold(const uint16_t *image, uint8_t *output,
     mean_filter(image, mean_filtered, width, height, npixels, window_size);
 
     // 4 - centralized threshold
+    #pragma omp parallel for
     for (uint64_t i = 0; i < npixels; i++) {
         float pixel_val       = image[i];
         float filtered_val    = mean_filtered[i];

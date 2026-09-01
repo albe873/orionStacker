@@ -160,7 +160,7 @@ void calibrateLights_gpu(
 {
     // Implementazione simile a masterDark, ma con sottrazione del master bias e del master dark,
     // e divisione per il master flat
-    // Per ogni pixel di ogni immagine light: calibrazione = (light - master_bias - master_dark) / master_flat
+    // Per ogni pixel di ogni immagine light: calibrazione = (light - master_dark) / (master_flat - master_bias)
 
     uint64_t npixels = width * height;
     dim3 block_size(512);
